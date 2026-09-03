@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<meta name="theme-color" content="#f53d0c" />
+<link rel="manifest" href="manifest.json" />
+<link rel="apple-touch-icon" href="logo.png" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="default" />
+<meta name="apple-mobile-web-app-title" content="삼대집" />
+<title>삼대집 — 한국의 3대 맛집</title>
+<style>
+  @import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard@latest/dist/web/variable/pretendardvariable.css');
+  *{ margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html,body{ height:100%; }
+  body{ font-family:'Pretendard Variable',Pretendard,system-ui,sans-serif; background:#0a0a0a; color:#0a0a0a;
+    display:flex; justify-content:center; overscroll-behavior:none; }
+  #app{ width:100%; max-width:440px; min-height:100vh; position:relative; overflow-x:hidden;
+    background:#f3f1ec; display:flex; flex-direction:column; }
+  button{ font-family:inherit; }
+  ::-webkit-scrollbar{ display:none; }
+  @keyframes b3in{ from{opacity:0; transform:translateY(8px);} to{opacity:1; transform:none;} }
+  @keyframes b3slide{ from{opacity:0; transform:translateX(14px);} to{opacity:1; transform:none;} }
+  @keyframes b3pop{ 0%{transform:scale(1.5);opacity:0;} 60%{transform:scale(.94);} 100%{transform:scale(1);opacity:1;} }
+  #toast{ position:fixed; left:50%; bottom:96px; transform:translate(-50%,20px); opacity:0; transition:.28s;
+    background:#0a0a0a; color:#fff; font:600 12.5px/1.4 inherit; padding:11px 18px; border-radius:99px; z-index:120; white-space:nowrap; pointer-events:none; max-width:90%; }
+  #toast.show{ opacity:1; transform:translate(-50%,0); }
+</style>
+</head>
+<body>
+<div id="app"><div style="padding:60px 0;text-align:center;color:rgba(10,10,10,.4);font-size:14px">불러오는 중…</div></div>
+<div id="toast"></div>
+<input type="file" id="picker" accept="image/*" capture="environment" hidden />
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+/* ===== 설정 ===== */
+const SUPABASE_URL="https://btrbzwbzljuejwtqkzho.supabase.co";
+const SUPABASE_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ0cmJ6d2J6bGp1ZWp3dHFremhvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODc1NTU5MDIsImV4cCI6MjEwMzEzMTkwMn0.f34uxPemdGSKjHUoc1G4ibEo7tXMQUzGG0ykpx0NgiQ";
+const SHEET_CSV="https://docs.google.com/spreadsheets/d/e/2PACX-1vREbCOidG_f7JAd2uBAofsV0YARd1RSJS_cA8eHu3PPfNCip9QF7aAAUPDzWMMVKKDB85gC-fugHsqV/pub?output=csv";
+const BADGE="assets/badge-naeng.png";
+const db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+const LS={get:k=>{try{return localStorage.getItem(k);}catch(e){return null;}},set:(k,v)=>{try{localStorage.setItem(k,v);}catch(e){}},del:k=>{try{localStorage.removeItem(k);}catch(e){}}};
+
+/* ===== 상태 ===== */
+const state={ screen:"home", region:null, curListId:null, lists:{}, order:[], regions:[], votes:{}, loaded:false, stamp:false };
+let myVotes=(()=>{ try{ return JSON.parse(LS.get("sdj_votes")||"{}"); }catch(e){ return {}; } })(); // { listId: candId }
+function saveVotes(){ LS.set("sdj_votes", JSON.stringify(myVotes)); }
+function photos(){ try{ return JSON.parse(LS.get("sdj_photos")||"{}"); }catch(e){ return {}; } }
+function setPhotos(o){ LS.set("sdj_photos", JSON.stringify(o)); }
+function isCertified(id){ return !!photos()[id]; }
+function certCount(){ return Object.keys(photos()).length; }
+
+/* ===== CSV 파싱 ===== */
+function splitCsvLine(line){ const out=[]; let cur="",q=false; for(let i=0;i<line.length;i++){ const ch=line[i];
+  if(q){ if(ch=='"'){ if(line[i+1]=='"'){cur+='"';i++;} else q=false; } else cur+=ch; }
+  else { if(ch=='"')q=true; else if(ch==','){ out.push(cur); cur=""; } else cur+=ch; } } out.push(cur); return out; }
+function parseCSV(text){ const lines=text.replace(/\r/g,"").split("\n").filter(l=>l.trim().length);
+  const head=splitCsvLine(lines[0]).map(h=>h.trim());
+  return lines.slice(1).map(l=>{ const c=splitCsvLine(l); const o={}; head.forEach((h,i)=>o[h]=(c[i]||"").trim()); return o; }); }
+function buildLists(rows){
+  const lists={}, order=[], regions=[], rseen={};
+  rows.forEach(r=>{ if(!r.list||!r.id) return;
+    if(!lists[r.list]){ lists[r.list]={id:r.list,region:r.region||"",category:r.category||"",title:((r.region||"")+" "+(r.category||"")).trim()||r.list,cands:[]}; order.push(r.list);
+      if(!rseen[r.region]){ rseen[r.region]=1; regions.push(r.region); } }
+    lists[r.list].cands.push({id:r.id,name:r.name||r.id,district:r.district||"",blurb:r.blurb||"",signature:r.signature||"",order:parseInt(r.order)||999});
+  });
+  Object.values(lists).forEach(L=>L.cands.sort((a,b)=>a.order-b.order));
+  return {lists,order,regions};
+}
+
+/* ===== 로드 ===== */
+async function fetchSheet(){ const res=await fetch(SHEET_CSV); if(!res.ok) throw new Error("sheet "+res.status); return parseCSV(await res.text()); }
+async function fetchVotes(){ const {data,error}=await db.from("vote_counts").select("id,count"); const m={}; if(!error&&data) data.forEach(r=>m[r.id]=r.count); return m; }
+const FALLBACK_CSV=`list,region,category,id,name,district,blurb,signature,order
+seoul-pyeongnaeng,서울,평양냉면,uraeok,우래옥,중구 주교동,묵직한 육수의 교과서,불고기 백반,1
+seoul-pyeongnaeng,서울,평양냉면,eulmil,을밀대,마포구 염리동,진한 살얼음 육수,제육,2
+seoul-pyeongnaeng,서울,평양냉면,pildong,필동면옥,중구 필동,슴슴함의 정석,제육,3
+seoul-pyeongnaeng,서울,평양냉면,bong,봉피양,강남구 방이동,정갈한 한 그릇,녹두전,4
+seoul-pyeongnaeng,서울,평양냉면,pyeongrae,평래옥,중구 을지로,노포의 품격,만두,5
+seoul-pyeongnaeng,서울,평양냉면,jinmi,진미평양냉면,강남구 논현,구수한 면수,제육,6
+seoul-pyeongnaeng,서울,평양냉면,nampo,남포면옥,중구 무교동,깔끔한 국물,빈대떡,7
+seoul-pyeongnaeng,서울,평양냉면,jungin,정인면옥,중구 주교동,가성비 노포,만두,8`;
+async function load(){
+  let rows;
+  try{ rows=await fetchSheet(); }
+  catch(e){ console.warn("[삼대집] 시트 로드 실패 → 내장 데이터 사용 (배포 시 라이브 시트):", e.message); rows=parseCSV(FALLBACK_CSV); }
+  let votes={}; try{ votes=await fetchVotes(); }catch(e){ console.warn("[삼대집] 표 로드 실패:", e.message); }
+  const b=buildLists(rows); state.lists=b.lists; state.order=b.order; state.regions=b.regions; state.votes=votes;
+  if(!state.region) state.region=b.regions[0]||null;
+  if(!state.curListId) state.curListId=b.order[0]||null;
+  state.loaded=true; render();
+}
+async function refreshVotes(){ state.votes=await fetchVotes(); render(); }
+
+/* ===== 파생 ===== */
+const vote=id=>state.votes[id]||0;
+function listsInRegion(rg){ return state.order.filter(id=>state.lists[id].region===rg); }
+function candsRanked(listId){ const L=state.lists[listId]; if(!L) return []; return [...L.cands].map(c=>({...c,v:vote(c.id)})).sort((a,b)=>b.v-a.v); }
+function listTotal(listId){ const L=state.lists[listId]; return L? L.cands.reduce((a,c)=>a+vote(c.id),0):0; }
+function top3(listId){ return candsRanked(listId).slice(0,3); }
+function allCertified(listId){ const t=top3(listId); return t.length===3 && t.every(s=>isCertified(s.id)); }
+
+/* ===== 투표 (1리스트 1표 · 이동 · 취소) ===== */
+let busy=false;
+async function castVote(listId,id){
+  if(busy) return; const prev=myVotes[listId];
+  if(prev===id){ return cancelVote(listId); }
+  busy=true;
+  if(prev) state.votes[prev]=Math.max(0,vote(prev)-1);
+  state.votes[id]=vote(id)+1; myVotes[listId]=id; saveVotes();
+  if(navigator.vibrate)navigator.vibrate(24); render();
+  try{ if(prev) await db.rpc("bump_vote",{vote_id:prev,delta:-1}); await db.rpc("bump_vote",{vote_id:id,delta:1}); }catch(e){ console.error(e); }
+  busy=false; await refreshVotes();
+}
+async function cancelVote(listId){
+  if(busy) return; const prev=myVotes[listId]; if(!prev) return; busy=true;
+  state.votes[prev]=Math.max(0,vote(prev)-1); delete myVotes[listId]; saveVotes(); toast("표를 취소했어요"); render();
+  try{ await db.rpc("bump_vote",{vote_id:prev,delta:-1}); }catch(e){ console.error(e); }
+  busy=false; await refreshVotes();
+}
+
+/* ===== 사진 인증 (EXIF 촬영일) ===== */
+let pickTarget=null;
+const picker=document.getElementById("picker");
+function openCert(id){ pickTarget=id; picker.value=""; picker.click(); }
+async function exifDate(file){
+  try{
+    const buf=await file.slice(0,256*1024).arrayBuffer(); const dv=new DataView(buf);
+    if(dv.getUint16(0)!==0xFFD8) return null; let off=2;
+    while(off<dv.byteLength-4){ const marker=dv.getUint16(off);
+      if(marker===0xFFE1){ const s=off+4; if(dv.getUint32(s)!==0x45786966) return null;
+        const tiff=s+6; const little=dv.getUint16(tiff)===0x4949; const g16=o=>dv.getUint16(o,little),g32=o=>dv.getUint32(o,little);
+        const ifd0=tiff+g32(tiff+4); let exifIFD=0,n=g16(ifd0);
+        for(let i=0;i<n;i++){ const e=ifd0+2+i*12; if(g16(e)===0x8769){ exifIFD=tiff+g32(e+8); break; } }
+        if(!exifIFD) return null; n=g16(exifIFD);
+        for(let i=0;i<n;i++){ const e=exifIFD+2+i*12; const tag=g16(e);
+          if(tag===0x9003||tag===0x9004){ const cnt=g32(e+4); const vo=cnt>4?tiff+g32(e+8):e+8; let str="";
+            for(let c=0;c<cnt-1;c++) str+=String.fromCharCode(dv.getUint8(vo+c));
+            const m=str.match(/(\d{4}):(\d{2}):(\d{2})/); if(m) return new Date(+m[1],+m[2]-1,+m[3]); } }
+        return null; }
+      if((marker&0xFF00)!==0xFF00) break; const size=dv.getUint16(off+2); if(size<2) break; off+=2+size; }
+  }catch(e){} return null;
+}
+picker.addEventListener("change", async (e)=>{
+  const f=e.target.files[0]; if(!f||!pickTarget) return;
+  const wasComplete=allCertified(state.curListId);
+  const ex=await exifDate(f); const d=ex||(f.lastModified? new Date(f.lastModified): new Date());
+  const dateStr=d.toLocaleDateString("ko-KR",{year:"2-digit",month:"2-digit",day:"2-digit"});
+  const rd=new FileReader();
+  rd.onload=(ev)=>{ const img=new Image(); img.onload=()=>{
+    const max=720; let{width:w,height:h}=img;
+    if(w>h&&w>max){h=h*max/w;w=max;} else if(h>max){w=w*max/h;h=max;}
+    const cv=document.createElement("canvas"); cv.width=w; cv.height=h; cv.getContext("2d").drawImage(img,0,0,w,h);
+    const url=cv.toDataURL("image/jpeg",0.72);
+    const p=photos(); p[pickTarget]={photo:url,date:dateStr,src:ex?"exif":"file"}; setPhotos(p);
+    pickTarget=null; if(navigator.vibrate)navigator.vibrate(40);
+    if(!wasComplete && allCertified(state.curListId)){ state.stamp=true; }
+    toast((ex?"📷 촬영일 ":"🗓 ")+dateStr+" 방문으로 인증됐어요"); render();
+  }; img.src=ev.target.result; };
+  rd.readAsDataURL(f);
+});
+
+/* ===== 라우팅 ===== */
+function go(screen){ state.screen=screen; window.scrollTo(0,0); render(); }
+function pickRegion(id){ state.region=id; render(); }
+function openList(listId){ state.curListId=listId; go("list"); }
+function openDetail(listId){ state.curListId=listId; go("detail"); }
+
+/* ===== 렌더 ===== */
+const esc=s=>(s==null?"":String(s));
+function render(){
+  const app=document.getElementById("app"); let html="";
+  if(state.screen==="home") html=viewHome();
+  else if(state.screen==="list") html=viewList();
+  else if(state.screen==="cert") html=viewCert();
+  else if(state.screen==="detail") html=viewDetail();
+  else html=viewSoon();
+  html+=navBar(); if(state.stamp) html+=stampOverlay();
+  app.innerHTML=html;
+  app.style.background=(state.screen==="list"||state.screen==="detail")?"#fff":"#f3f1ec";
+}
+
+/* ---- 홈 ---- */
+function viewHome(){
+  const v=certCount(); const rgLists=state.region?listsInRegion(state.region):[];
+  const hotId=rgLists.find(id=>state.lists[id].cands.length>=4); const rk=hotId?candsRanked(hotId):[];
+  const hot=rk.length>=4; const gap=hot?(rk[2].v-rk[3].v):0;
+  return `
+  <div style="padding:16px 0 104px;animation:b3in .32s ease both">
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;padding:8px 20px 18px">
+      <div style="min-width:0">
+        <div style="font:800 25px/1 Pretendard;letter-spacing:-.04em;color:#0a0a0a">삼대집<span style="color:#f53d0c">.</span></div>
+        <div style="font:600 12.5px/1.45 Pretendard;color:rgba(10,10,10,.5);margin-top:11px;max-width:210px">집단지성으로 정하는 진짜 3대 맛집</div>
+      </div>
+      <div style="flex:none;display:flex;flex-direction:column;align-items:center;gap:6px">
+        <div style="font:700 10px/1 Pretendard;letter-spacing:.06em;color:rgba(10,10,10,.45)">도장깨기</div>
+        <button onclick="go('cert')" style="width:46px;height:46px;border-radius:99px;border:none;background:rgba(10,10,10,.07);color:#0a0a0a;font:800 15px/1 Pretendard;cursor:pointer">${v}</button>
+      </div>
+    </div>
+    <div style="display:flex;gap:6px;overflow-x:auto;padding:0 20px 16px">
+      ${state.regions.map(r=>{const on=r===state.region;return `<button onclick="pickRegion('${r}')" style="flex:none;border:none;cursor:pointer;border-radius:99px;padding:9px 16px;font:700 13px/1 Pretendard;${on?"background:#0a0a0a;color:#fff":"background:rgba(10,10,10,.06);color:rgba(10,10,10,.55)"}">${esc(r)}</button>`;}).join("")}
+    </div>
+    ${rgLists.length?`<div style="display:grid;grid-template-columns:1fr 1fr;gap:7px;padding:0 20px">${rgLists.map(id=>tileCard(id)).join("")}</div>`
+      :`<div style="margin:12px 20px 0;background:rgba(10,10,10,.04);border-radius:20px;padding:30px 22px;text-align:center;font:600 13px/1.6 Pretendard;color:rgba(10,10,10,.5)">아직 이 지역 목록이 없어요.<br>후보지 제안으로 첫 3대를 만들어보세요.</div>`}
+    ${hot?`<div style="padding:22px 20px 0">
+      <div style="font:700 11px/1 Pretendard;letter-spacing:.16em;color:rgba(10,10,10,.4);margin-bottom:12px">순위 경쟁이 가장 치열한 곳</div>
+      <div onclick="openList('${hotId}')" style="cursor:pointer;background:#0a0a0a;border-radius:22px;padding:18px 18px 16px;color:#fff">
+        <div style="display:flex;align-items:center;gap:11px">
+          <div style="font:800 13px/1 Pretendard;color:#f53d0c;letter-spacing:.1em">3위 ↔ 4위</div>
+          <div style="flex:1;height:1px;background:rgba(255,255,255,.18)"></div>
+          <div style="font:500 11.5px/1 Pretendard;color:rgba(255,255,255,.55)">${gap}표 차</div>
+        </div>
+        <div style="font:800 24px/1.12 Pretendard;letter-spacing:-.04em;margin-top:13px">${esc(rk[2].name)} vs ${esc(rk[3].name)}</div>
+        <div style="font:500 12px/1.5 Pretendard;color:rgba(255,255,255,.55);margin-top:7px">${esc(state.lists[hotId].title)} · 한 표면 순위가 뒤집힙니다</div>
+      </div></div>`:""}
+  </div>`;
+}
+function tileCard(id){
+  const L=state.lists[id];
+  return `<div onclick="openList('${id}')" style="cursor:pointer;height:150px;border-radius:20px;overflow:hidden;background:linear-gradient(160deg,#ff6a3d,#f53d0c);display:flex;flex-direction:column">
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;padding:15px 15px 0">
+      <div style="font:700 9.5px/1 Pretendard;letter-spacing:.14em;color:rgba(255,255,255,.85)">${esc(L.region)}</div>
+      <div style="font:700 15px/1 Pretendard;color:#fff">↗</div></div>
+    <div style="margin-top:auto;padding:0 15px 15px">
+      <div style="font:800 20px/1.1 Pretendard;letter-spacing:-.03em;color:#fff">${esc(L.category)}</div>
+      <div style="font:600 11px/1.4 Pretendard;color:rgba(255,255,255,.85);margin-top:3px">${L.cands.length}곳 후보 · ${listTotal(id).toLocaleString()}표</div></div></div>`;
+}
+
+/* ---- 목록·투표 ---- */
+function viewList(){
+  const L=state.lists[state.curListId]; if(!L) return viewSoon();
+  const rk=candsRanked(L.id); const total=listTotal(L.id)||1; const t3=rk.slice(0,3),cands=rk.slice(3);
+  const mv=myVotes[L.id]; const voter=mv?(L.cands.find(x=>x.id===mv)||{}).name:null;
+  const gap=rk.length>=4?(rk[2].v-rk[3].v):0;
+  return `
+  <div style="animation:b3slide .3s ease both;padding-bottom:104px">
+    <div style="background:#f53d0c;padding:14px 20px 24px">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:22px">
+        <button onclick="go('home')" style="width:44px;height:44px;border-radius:99px;border:none;background:rgba(255,255,255,.2);color:#fff;font:700 19px/1 Pretendard;cursor:pointer">←</button>
+        <div style="flex:1;font:700 11px/1 Pretendard;letter-spacing:.2em;color:rgba(255,255,255,.8);text-align:center">${esc(L.region)} · 삼대집</div>
+        <div style="width:44px"></div>
+      </div>
+      <div style="font:800 42px/.98 Pretendard;letter-spacing:-.05em;color:#0a0a0a">${esc(L.title)}</div>
+      <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:12px;margin-top:16px">
+        <div style="flex:1;font:500 12.5px/1.4 Pretendard;color:rgba(255,255,255,.9)">집단지성으로 정한 ${esc(L.title)} 3대. 한 표로 순위가 바뀝니다.</div>
+        <div style="text-align:right;flex:none">
+          <div style="font:800 22px/1 Pretendard;color:#fff">${total.toLocaleString()}</div>
+          <div style="font:500 10.5px/1 Pretendard;color:rgba(255,255,255,.7);margin-top:4px">누적 투표</div></div>
+      </div>
+      <div style="display:flex;align-items:center;gap:12px;background:${mv?"#fff":"rgba(255,255,255,.22)"};border-radius:16px;padding:13px 15px;margin-top:16px">
+        <div style="flex:1;min-width:0">
+          <div style="font:700 12px/1.4 Pretendard;color:${mv?"#0a0a0a":"#fff"}">${mv?("내 표 · "+esc(voter)):"아직 투표 전 — 원픽을 골라요"}</div>
+          <div style="font:500 10.5px/1.4 Pretendard;color:${mv?"rgba(10,10,10,.6)":"rgba(255,255,255,.8)"};margin-top:3px">1계정 1표 · 언제든 바꿀 수 있어요</div></div>
+        ${mv?`<button onclick="cancelVote('${L.id}')" style="flex:none;border:none;background:rgba(10,10,10,.08);color:#0a0a0a;font:700 11.5px/1 Pretendard;padding:10px 14px;border-radius:99px;cursor:pointer">표 취소</button>`:""}
+      </div>
+    </div>
+    <div style="padding:18px 20px 0">
+      <div style="display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:12px">
+        <div style="font:800 18px/1 Pretendard;letter-spacing:-.03em;color:#0a0a0a">현재 3대</div>
+        <div style="font:500 11px/1 Pretendard;color:rgba(10,10,10,.45)">투표로 언제든 바뀝니다</div></div>
+      <div style="display:flex;flex-direction:column;gap:9px">${t3.map((s,i)=>top3Card(L.id,s,i+1,total,mv)).join("")}</div>
+      ${cands.length?`<div style="display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin:26px 0 0">
+        <div style="font:800 18px/1 Pretendard;letter-spacing:-.03em;color:#0a0a0a">3위 밖 후보</div>
+        <div style="font:500 11px/1 Pretendard;color:rgba(10,10,10,.45)">${gap}표 차로 갈렸어요</div></div>
+      <div style="height:1px;background:rgba(10,10,10,.12);margin:11px 0 12px"></div>
+      <div style="display:flex;flex-direction:column;gap:7px">${cands.map((c,i)=>candCard(L.id,c,i+4,mv)).join("")}</div>`:""}
+      <div style="margin-top:22px;background:#0a0a0a;border-radius:22px;padding:18px">
+        <div style="font:800 17px/1.2 Pretendard;letter-spacing:-.03em;color:#fff">후보지 추가 제안</div>
+        <div style="font:500 11.5px/1.6 Pretendard;color:rgba(255,255,255,.6);margin-top:7px">여기 빠졌다 싶은 곳을 올려주세요. 다른 이용자 <b style="color:#f53d0c">100명의 동의</b>를 받으면 후보로 정식 등록됩니다.</div>
+        <button onclick="toast('후보 제안은 곧 열려요')" style="margin-top:14px;border:none;background:#f53d0c;color:#fff;font:700 13px/1 Pretendard;padding:14px 18px;border-radius:99px;cursor:pointer;width:100%">가게 제안하기</button>
+      </div>
+      ${allCertified(L.id)?`<div style="margin-top:16px;background:linear-gradient(160deg,#fff,#ffe9e0);border:2px solid #f53d0c;border-radius:22px;padding:20px">
+        <div style="font:800 24px/1.05 Pretendard;letter-spacing:-.04em;color:#0a0a0a">3곳 다 갔어요</div>
+        <div style="font:500 12px/1.5 Pretendard;color:rgba(10,10,10,.6);margin:8px 0 14px">${esc(L.title)} 완주 — 인증 뱃지를 받으세요.</div>
+        <button onclick="openDetail('${L.id}')" style="border:none;background:#0a0a0a;color:#fff;font:700 13px/1 Pretendard;padding:13px 18px;border-radius:99px;cursor:pointer">도장깨기 보기</button></div>`:""}
+    </div>
+  </div>`;
+}
+function top3Card(listId,s,rank,total,mv){
+  const pct=Math.round((s.v||0)/total*100); const mine=mv===s.id; const cert=isCertified(s.id);
+  return `<div style="background:#fff;border-radius:22px;${mine?"box-shadow:0 0 0 2px #f53d0c":"box-shadow:0 1px 0 rgba(10,10,10,.05)"}">
+    <div style="display:flex;align-items:flex-start;gap:13px;padding:17px 17px 12px">
+      <div style="font:800 26px/.9 Pretendard;letter-spacing:-.05em;color:#f53d0c;width:26px">${rank}</div>
+      <div style="flex:1;min-width:0">
+        <div style="font:800 19px/1.2 Pretendard;letter-spacing:-.03em;color:#0a0a0a">${esc(s.name)}</div>
+        ${s.blurb?`<div style="font:600 12.5px/1.5 Pretendard;color:#f53d0c;margin-top:6px">“${esc(s.blurb)}”</div>`:""}
+        <div style="font:500 11px/1.4 Pretendard;color:rgba(10,10,10,.4);margin-top:5px">${esc(s.district)}${s.signature?" · "+esc(s.signature):""}</div></div>
+      <div style="flex:none;width:26px;height:26px;border-radius:99px;display:flex;align-items:center;justify-content:center;font:800 12px/1 Pretendard;${cert?"background:#0a0a0a;color:#fff":"background:rgba(10,10,10,.06);color:rgba(10,10,10,.3)"}">${cert?"✓":""}</div>
+    </div>
+    <div style="padding:0 17px 15px">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+        <div style="flex:1;height:9px;background:rgba(10,10,10,.07);border-radius:99px;overflow:hidden"><div style="height:100%;background:#f53d0c;border-radius:99px;transition:width .45s cubic-bezier(.2,.8,.2,1);width:${pct}%"></div></div>
+        <div style="flex:none;font:800 13px/1 Pretendard;color:#0a0a0a">${s.v}표</div></div>
+      <div style="display:flex;gap:7px">
+        <button onclick="castVote('${listId}','${s.id}')" style="flex:1;border:none;cursor:pointer;border-radius:12px;padding:12px 0;font:700 12.5px/1 Pretendard;${mine?"background:#f53d0c;color:#fff":"background:rgba(10,10,10,.06);color:#0a0a0a"}">${mine?"내 표 ✓":"이 집에 투표"}</button>
+        <button onclick="openCert('${s.id}')" style="flex:none;border:none;cursor:pointer;border-radius:12px;padding:12px 16px;font:700 12.5px/1 Pretendard;${cert?"background:#0a0a0a;color:#fff":"background:rgba(10,10,10,.06);color:#0a0a0a"}">${cert?"인증됨":"사진 인증"}</button></div>
+    </div></div>`;
+}
+function candCard(listId,c,rank,mv){
+  const mine=mv===c.id;
+  return `<div style="background:#fff;border-radius:18px;${mine?"box-shadow:0 0 0 2px #f53d0c":""}">
+    <div style="display:flex;align-items:center;gap:12px;padding:13px 14px 11px">
+      <div style="font:800 15px/1 Pretendard;color:rgba(10,10,10,.35);width:22px">${rank}</div>
+      <div style="flex:1;min-width:0">
+        <div style="font:700 15px/1.25 Pretendard;letter-spacing:-.02em;color:#0a0a0a">${esc(c.name)}</div>
+        ${c.blurb?`<div style="font:600 11.5px/1.45 Pretendard;color:rgba(10,10,10,.62);margin-top:4px">“${esc(c.blurb)}”</div>`:""}
+        <div style="font:500 10.5px/1.4 Pretendard;color:rgba(10,10,10,.38);margin-top:3px">${esc(c.district)}${c.signature?" · "+esc(c.signature):""}</div></div>
+      <div style="flex:none;font:700 12px/1 Pretendard;color:rgba(10,10,10,.5)">${c.v}표</div></div>
+    <div style="padding:0 14px 12px">
+      <button onclick="castVote('${listId}','${c.id}')" style="width:100%;border:none;cursor:pointer;border-radius:12px;padding:11px 0;font:700 12.5px/1 Pretendard;${mine?"background:#f53d0c;color:#fff":"background:rgba(10,10,10,.06);color:#0a0a0a"}">${mine?"내 표 ✓ · 여기로 옮김":"이 집에 투표"}</button></div>
+  </div>`;
+}
+
+/* ---- 도장깨기 리스트 ---- */
+function viewCert(){
+  const doneCount=state.order.filter(id=>allCertified(id)).length;
+  return `
+  <div style="animation:b3in .3s ease both;padding:16px 20px 104px">
+    <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:12px;margin-bottom:20px">
+      <div><div style="font:800 46px/.92 Pretendard;letter-spacing:-.045em;color:#0a0a0a">${doneCount}</div>
+        <div style="font:500 12.5px/1.4 Pretendard;color:rgba(10,10,10,.45);margin-top:8px">도장깨기 완주</div></div>
+      <div style="font:800 20px/1 Pretendard;letter-spacing:-.04em;color:rgba(10,10,10,.25)">삼대집.</div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:8px">
+      ${state.order.map(id=>{ const t=top3(id); const n=t.filter(s=>isCertified(s.id)).length; const complete=allCertified(id); const L=state.lists[id];
+        return `<div onclick="openDetail('${id}')" style="cursor:pointer;background:${complete?"linear-gradient(160deg,#fff,#ffeee7)":"#fff"};border-radius:20px;padding:16px;${complete?"box-shadow:0 0 0 2px #f53d0c":""}">
+          <div style="display:flex;align-items:center;gap:14px">
+            <div style="flex:none;width:52px;height:52px;border-radius:99px;background:${complete?"transparent":"rgba(10,10,10,.06)"};${complete?`background-image:url('${BADGE}');background-size:cover;background-position:center;`:""}"></div>
+            <div style="flex:1;min-width:0">
+              <div style="font:800 16px/1.2 Pretendard;letter-spacing:-.03em;color:#0a0a0a">${esc(L.title)}</div>
+              <div style="font:500 11.5px/1.4 Pretendard;color:rgba(10,10,10,.5);margin-top:4px">${complete?"완주 · 인증 뱃지 획득":n+"/3 인증"}</div></div>
+            <div style="flex:none;font:800 14px/1 Pretendard;color:${complete?"#f53d0c":"rgba(10,10,10,.35)"}">${n}/3</div>
+            <div style="flex:none;font:700 18px/1 Pretendard;color:rgba(10,10,10,.3)">›</div>
+          </div></div>`; }).join("")}
+    </div>
+    <div style="margin-top:18px;border:1px dashed rgba(10,10,10,.2);border-radius:20px;padding:18px;font:500 12.5px/1.7 Pretendard;color:rgba(10,10,10,.5)">목록을 눌러 도장깨기 삼각형을 열고, 사진을 올려 인증하세요. 세 곳을 모두 채우면 완주 뱃지가 등장합니다.</div>
+  </div>`;
+}
+
+/* ---- 삼각형 detail ---- */
+function viewDetail(){
+  const L=state.lists[state.curListId]; if(!L) return viewSoon();
+  const t3=top3(L.id); const p=photos(); const n=t3.filter(s=>isCertified(s.id)).length; const complete=allCertified(L.id);
+  const pos=[{l:50,t:22},{l:23,t:80},{l:77,t:80}];
+  const nodes=t3.map((s,i)=>{ const cert=isCertified(s.id); const ph=p[s.id]; const labelPos=i===0?"bottom:84px":"top:84px";
+    return `<div style="position:absolute;left:${pos[i].l}%;top:${pos[i].t}%;transform:translate(-50%,-50%);width:78px;height:78px">
+      <button onclick="openCert('${s.id}')" style="width:78px;height:78px;border-radius:99px;cursor:pointer;border:${cert?"3px solid #f53d0c":"2px dashed rgba(10,10,10,.28)"};background:${cert?`#eee url('${ph.photo}') center/cover`:"rgba(10,10,10,.04)"};display:flex;align-items:center;justify-content:center;color:${cert?"#fff":"rgba(10,10,10,.4)"};overflow:hidden;box-shadow:${cert?"0 4px 14px rgba(245,61,12,.25)":"none"}">${cert?"":'<span style="font:800 24px/1 Pretendard">＋</span>'}</button>
+      <div style="position:absolute;${labelPos};left:50%;transform:translateX(-50%);white-space:nowrap;font:700 12.5px/1.2 Pretendard;letter-spacing:-.02em;color:#0a0a0a">${esc(s.name)}</div>
+    </div>`; }).join("");
+  return `
+  <div style="animation:b3slide .3s ease both;padding-bottom:104px">
+    <div style="background:#f53d0c;padding:14px 20px 20px;display:flex;align-items:center;justify-content:space-between;gap:12px">
+      <button onclick="go('cert')" style="width:44px;height:44px;border-radius:99px;border:none;background:rgba(255,255,255,.2);color:#fff;font:700 19px/1 Pretendard;cursor:pointer">←</button>
+      <div style="flex:1;font:700 12px/1 Pretendard;letter-spacing:.2em;color:rgba(255,255,255,.85);text-align:center">삼대집 · 도장깨기</div>
+      <div style="width:44px"></div>
+    </div>
+    <div style="padding:24px 20px 0;text-align:center">
+      <div style="font:800 30px/1.1 Pretendard;letter-spacing:-.04em;color:#0a0a0a">${esc(L.title)}</div>
+      <div style="font:500 12px/1.5 Pretendard;color:rgba(10,10,10,.45);margin-top:9px">3곳 중 ${n}곳 인증 · 세 곳을 모두 채우면 완주</div>
+    </div>
+    <div style="position:relative;width:100%;max-width:330px;height:344px;margin:16px auto 0">
+      <svg viewBox="0 0 100 100" preserveAspectRatio="none" style="position:absolute;inset:0;width:100%;height:100%">
+        <polygon points="50,22 23,80 77,80" fill="none" stroke="${complete?'#f53d0c':'rgba(10,10,10,.15)'}" stroke-width="1.2" stroke-dasharray="${complete?'0':'3 3'}"/>
+      </svg>
+      <div style="position:absolute;left:50%;top:51%;transform:translate(-50%,-50%);width:76px;height:76px;border-radius:99px;background:url('${BADGE}') center/cover;${complete?"box-shadow:0 0 0 4px rgba(245,61,12,.25);":"filter:grayscale(1);opacity:.4;"}"></div>
+      ${nodes}
+    </div>
+    <div style="padding:6px 20px 0">
+      <div style="text-align:center;font:600 11.5px/1.6 Pretendard;color:rgba(10,10,10,.45);margin-bottom:14px">각 꼭짓점을 눌러 그 집 사진을 올리면 인증돼요.</div>
+      <div style="display:flex;flex-direction:column;gap:8px">
+        ${t3.map(s=>{const cert=isCertified(s.id);const ph=p[s.id];
+          return `<div style="display:flex;align-items:center;gap:12px;background:#fff;border-radius:18px;padding:13px 15px">
+            <div style="flex:none;width:26px;height:26px;border-radius:99px;display:flex;align-items:center;justify-content:center;font:800 12px/1 Pretendard;${cert?"background:#0a0a0a;color:#fff":"background:rgba(10,10,10,.06);color:rgba(10,10,10,.3)"}">${cert?"✓":""}</div>
+            <div style="flex:1;min-width:0"><div style="font:700 14px/1.3 Pretendard;letter-spacing:-.02em;color:#0a0a0a">${esc(s.name)}</div>
+              <div style="font:500 11px/1.4 Pretendard;color:rgba(10,10,10,.45);margin-top:3px">${esc(s.district)}${s.signature?" · "+esc(s.signature):""}</div></div>
+            <button onclick="openCert('${s.id}')" style="flex:none;border:none;cursor:pointer;font:700 11px/1 Pretendard;padding:9px 13px;border-radius:99px;${cert?"background:rgba(10,10,10,.06);color:#0a0a0a":"background:#f53d0c;color:#fff"}">${cert?esc(ph.date):"인증"}</button>
+          </div>`;}).join("")}
+      </div>
+    </div>
+  </div>`;
+}
+
+/* ---- 완주 뱃지 ---- */
+function stampOverlay(){
+  const L=state.lists[state.curListId]; const title=L?L.title:"";
+  return `<div onclick="closeStamp()" style="position:fixed;inset:0;max-width:440px;margin:0 auto;background:rgba(10,10,10,.68);display:flex;align-items:center;justify-content:center;padding:32px;cursor:pointer;z-index:110">
+    <div style="background:#f53d0c;border-radius:28px;padding:34px 26px 26px;text-align:center;width:100%;animation:b3pop .5s cubic-bezier(.2,.9,.3,1.2) both">
+      <div style="width:170px;height:170px;margin:0 auto;background:url('${BADGE}') center/contain no-repeat;filter:drop-shadow(0 10px 20px rgba(0,0,0,.3))"></div>
+      <div style="font:800 26px/1.1 Pretendard;letter-spacing:-.04em;color:#0a0a0a;margin-top:14px">${esc(title)} 완주</div>
+      <div style="font:500 12.5px/1.6 Pretendard;color:rgba(255,255,255,.92);margin-top:8px">3대 맛집 전부 방문 인증 완료</div>
+      <div style="font:500 10px/1 ui-monospace,Menlo,monospace;color:rgba(10,10,10,.55);margin-top:20px;letter-spacing:.1em">TAP TO CLOSE</div>
+    </div></div>`;
+}
+function closeStamp(){ state.stamp=false; render(); }
+
+/* ---- 준비 중 ---- */
+function viewSoon(){
+  const label=state.screen==="me"?"마이":"";
+  return `<div style="min-height:60vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:40px;text-align:center;animation:b3in .3s ease both">
+    <div style="font:800 22px/1.2 Pretendard;color:#0a0a0a">${label} — 곧 나와요</div>
+    <div style="font:500 13px/1.6 Pretendard;color:rgba(10,10,10,.5)">다음 단계에서 만들어요.</div>
+    <button onclick="go('home')" style="border:none;background:#0a0a0a;color:#fff;font:700 13px/1 Pretendard;padding:13px 20px;border-radius:99px;cursor:pointer">홈으로</button></div>`;
+}
+
+/* ---- 네비 ---- */
+function navBar(){
+  const item=(id,label)=>{ const on=state.screen===id||(id==="home"&&state.screen==="list")||(id==="cert"&&state.screen==="detail");
+    return `<button onclick="go('${id}')" style="flex:1;border:none;background:none;cursor:pointer;padding:12px 0 calc(12px + env(safe-area-inset-bottom));font:700 12px/1 Pretendard;color:${on?"#0a0a0a":"rgba(10,10,10,.4)"};position:relative">${label}${on?`<span style="position:absolute;top:0;left:38%;right:38%;height:3px;background:#f53d0c;border-radius:99px"></span>`:""}</button>`; };
+  return `<nav style="position:fixed;bottom:0;left:0;right:0;max-width:440px;margin:0 auto;display:flex;background:rgba(255,255,255,.94);backdrop-filter:blur(10px);border-top:1px solid rgba(10,10,10,.08);z-index:60">${item("home","홈")}${item("cert","도장깨기")}${item("me","마이")}</nav>`;
+}
+let toastT; function toast(m){ const t=document.getElementById("toast"); t.textContent=m; t.classList.add("show"); clearTimeout(toastT); toastT=setTimeout(()=>t.classList.remove("show"),2200); }
+
+load();
+</script>
+</body>
+</html>
