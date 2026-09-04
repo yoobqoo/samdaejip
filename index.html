@@ -177,6 +177,7 @@ function render(){
   else if(state.screen==="list") html=viewList();
   else if(state.screen==="cert") html=viewCert();
   else if(state.screen==="detail") html=viewDetail();
+  else if(state.screen==="me") html=viewMe();
   else html=viewSoon();
   html+=navBar(); if(state.stamp) html+=stampOverlay();
   app.innerHTML=html;
@@ -192,7 +193,7 @@ function viewHome(){
   <div style="padding:16px 0 104px;animation:b3in .32s ease both">
     <div style="display:flex;align-items:flex-start;justify-content:space-between;padding:8px 20px 18px">
       <div style="min-width:0">
-        <div style="display:flex;align-items:center;gap:9px"><img src="logo.png" alt="삼대집" style="width:30px;height:30px;border-radius:7px;display:block"><div style="font:800 25px/1 Pretendard;letter-spacing:-.04em;color:#0a0a0a">삼대집<span style="color:#f53d0c">.</span></div></div>
+        <div style="display:flex;align-items:center;gap:10px"><img src="logo.png" alt="" style="width:30px;height:30px;border-radius:7px;display:block"><div style="width:98px;height:23px;background:url('assets/wordmark.png') left center/98px auto no-repeat" role="img" aria-label="삼대집"></div></div>
         <div style="font:600 12.5px/1.45 Pretendard;color:rgba(10,10,10,.5);margin-top:11px;max-width:210px">집단지성으로 정하는 진짜 3대 맛집</div>
       </div>
       <div style="flex:none;display:flex;flex-direction:column;align-items:center;gap:6px">
@@ -396,12 +397,63 @@ function stampOverlay(){
 }
 function closeStamp(){ state.stamp=false; render(); }
 
-/* ---- 준비 중 ---- */
+/* ---- 마이 (로그인/로그아웃) ---- */
+let user=(()=>{ try{ return JSON.parse(LS.get("sdj_user")||"null"); }catch(e){ return null; } })();
+function loginMock(provider){ const names={kakao:"카카오 사용자",naver:"네이버 사용자",guest:"게스트"};
+  user={provider,name:names[provider]||"사용자",since:new Date().toLocaleDateString("ko-KR",{year:"2-digit",month:"2-digit",day:"2-digit"})+" 시작"};
+  LS.set("sdj_user",JSON.stringify(user)); if(provider!=="guest") toast(names[provider]+" 연결됨 (데모)"); render(); }
+function logout(){ user=null; LS.del("sdj_user"); toast("로그아웃됐어요"); render(); }
+function viewMe(){ return user? meIn(): meOut(); }
+function meOut(){
+  return `<div style="animation:b3in .3s ease both;padding:14px 20px 104px">
+    <div style="padding:28px 0 6px;text-align:center">
+      <div style="width:150px;height:34px;margin:0 auto;background:url('assets/wordmark.png') center/152px auto no-repeat" role="img" aria-label="삼대집"></div>
+      <div style="font:800 25px/1.3 Pretendard;letter-spacing:-.04em;color:#0a0a0a;margin-top:22px">내 도장, 내 한 표<br>기기가 바뀌어도 그대로</div>
+      <div style="font:500 12.5px/1.7 Pretendard;color:rgba(10,10,10,.5);margin-top:11px">3초 만에 시작하고 인증 기록과 투표를 저장하세요.</div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:8px;margin-top:26px">
+      <button onclick="loginMock('kakao')" style="width:100%;cursor:pointer;border:none;background:#FEE500;color:#191600;border-radius:14px;padding:15px 18px;display:flex;align-items:center;gap:10px;font:700 14px/1 Pretendard">
+        <span style="width:22px;height:22px;border-radius:7px;background:#191600;color:#FEE500;display:flex;align-items:center;justify-content:center;font:800 12px/1 Pretendard">k</span>
+        <span style="flex:1;text-align:left">카카오로 시작</span><span style="font:500 11px/1 Pretendard;color:rgba(25,22,0,.5)">3초</span></button>
+      <button onclick="loginMock('naver')" style="width:100%;cursor:pointer;border:none;background:#03C75A;color:#fff;border-radius:14px;padding:15px 18px;display:flex;align-items:center;gap:10px;font:700 14px/1 Pretendard">
+        <span style="width:22px;height:22px;border-radius:7px;background:#fff;color:#03C75A;display:flex;align-items:center;justify-content:center;font:800 13px/1 Pretendard">N</span>
+        <span style="flex:1;text-align:left">네이버로 시작</span><span style="font:500 11px/1 Pretendard;color:rgba(255,255,255,.7)">3초</span></button>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px;margin:20px 0">
+      <div style="flex:1;height:1px;background:rgba(10,10,10,.12)"></div><div style="font:500 11px/1 Pretendard;color:rgba(10,10,10,.35)">또는</div><div style="flex:1;height:1px;background:rgba(10,10,10,.12)"></div></div>
+    <button onclick="loginMock('guest')" style="width:100%;cursor:pointer;border:1px solid rgba(10,10,10,.14);background:transparent;color:#0a0a0a;font:700 13px/1 Pretendard;padding:15px;border-radius:99px">둘러보기로 계속</button>
+    <div style="font:500 10.5px/1.7 Pretendard;color:rgba(10,10,10,.38);text-align:center;margin-top:18px">가입 시 이용약관 및 개인정보처리방침에 동의하게 됩니다.<br>1계정 1표 원칙을 위해 소셜 계정 인증이 필요합니다.</div>
+  </div>`;
+}
+function meIn(){
+  const P={kakao:{t:"카카오",bg:"#FEE500",c:"#191600"},naver:{t:"네이버",bg:"#03C75A",c:"#fff"},guest:{t:"게스트",bg:"rgba(255,255,255,.16)",c:"#fff"}}[user.provider]||{t:"계정",bg:"rgba(255,255,255,.16)",c:"#fff"};
+  const votes=Object.keys(myVotes).length, certs=certCount(), done=state.order.filter(id=>allCertified(id)).length;
+  const stats=[[votes,"투표한 목록"],[certs,"인증 사진"],[done,"완주"]];
+  const rows=[["인증 방식",P.t+" 계정"],["데이터","이 기기에 저장"],["버전","0.1 베타"]];
+  return `<div style="animation:b3in .3s ease both;padding:14px 20px 104px">
+    <div style="display:flex;align-items:center;gap:14px;background:#0a0a0a;border-radius:24px;padding:20px">
+      <div style="flex:none;width:52px;height:52px;border-radius:99px;background:#f53d0c;color:#fff;display:flex;align-items:center;justify-content:center;font:800 22px/1 Pretendard">${esc(user.name[0])}</div>
+      <div style="flex:1;min-width:0">
+        <div style="font:800 19px/1.2 Pretendard;letter-spacing:-.03em;color:#fff">${esc(user.name)}</div>
+        <div style="display:flex;align-items:center;gap:6px;margin-top:7px">
+          <span style="font:700 10px/1 Pretendard;padding:4px 8px;border-radius:99px;background:${P.bg};color:${P.c}">${P.t}</span>
+          <span style="font:500 11px/1 Pretendard;color:rgba(255,255,255,.5)">${esc(user.since||"")}</span></div></div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:7px;margin-top:8px">
+      ${stats.map(s=>`<div style="background:#fff;border-radius:18px;padding:16px 12px;text-align:center"><div style="font:800 26px/1 Pretendard;letter-spacing:-.04em;color:#f53d0c">${s[0]}</div><div style="font:600 11px/1.3 Pretendard;color:rgba(10,10,10,.45);margin-top:7px">${s[1]}</div></div>`).join("")}
+    </div>
+    <div style="font:700 11px/1 Pretendard;letter-spacing:.14em;color:rgba(10,10,10,.4);margin:24px 0 11px">계정</div>
+    <div style="display:flex;flex-direction:column;gap:7px">
+      ${rows.map(r=>`<div style="display:flex;align-items:center;gap:12px;background:#fff;border-radius:18px;padding:15px 16px"><div style="flex:1;font:600 13.5px/1.3 Pretendard;color:#0a0a0a">${r[0]}</div><div style="font:500 12px/1 Pretendard;color:rgba(10,10,10,.4)">${r[1]}</div></div>`).join("")}
+    </div>
+    <button onclick="logout()" style="width:100%;margin-top:18px;cursor:pointer;border:1px solid rgba(10,10,10,.14);background:transparent;color:rgba(10,10,10,.55);font:700 12.5px/1 Pretendard;padding:15px;border-radius:99px">로그아웃</button>
+  </div>`;
+}
+
+/* ---- 기타 폴백 ---- */
 function viewSoon(){
-  const label=state.screen==="me"?"마이":"";
   return `<div style="min-height:60vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:40px;text-align:center;animation:b3in .3s ease both">
-    <div style="font:800 22px/1.2 Pretendard;color:#0a0a0a">${label} — 곧 나와요</div>
-    <div style="font:500 13px/1.6 Pretendard;color:rgba(10,10,10,.5)">다음 단계에서 만들어요.</div>
+    <div style="font:800 22px/1.2 Pretendard;color:#0a0a0a">곧 나와요</div>
     <button onclick="go('home')" style="border:none;background:#0a0a0a;color:#fff;font:700 13px/1 Pretendard;padding:13px 20px;border-radius:99px;cursor:pointer">홈으로</button></div>`;
 }
 
