@@ -46,8 +46,15 @@ const LS={get:k=>{try{return localStorage.getItem(k);}catch(e){return null;}},se
 
 /* ===== 상태 ===== */
 const state={ screen:"home", region:null, curListId:null, lists:{}, order:[], regions:[], votes:{}, loaded:false, stamp:false };
-let myVotes=(()=>{ try{ return JSON.parse(LS.get("sdj_votes")||"{}"); }catch(e){ return {}; } })(); // { listId: candId }
-function saveVotes(){ LS.set("sdj_votes", JSON.stringify(myVotes)); }
+let myVotes={}; // { listId: candId } — 로그인 시 서버(user_votes)에서 로드
+let session=null; let guest=(LS.get("sdj_guest")==="1");
+function currentUser(){
+  if(session){ const u=session.user, m=u.user_metadata||{}, a=u.app_metadata||{};
+    return {provider:a.provider||"kakao", name:(m.name||m.nickname||m.full_name||u.email||"사용자"), id:u.id}; }
+  if(guest) return {provider:"guest", name:"게스트", guest:true};
+  return null;
+}
+async function loadMyVotes(){ myVotes={}; if(!session) return; try{ const {data}=await db.from("user_votes").select("list_id,candidate_id"); (data||[]).forEach(r=>myVotes[r.list_id]=r.candidate_id); }catch(e){ console.warn(e); } }
 function photos(){ try{ return JSON.parse(LS.get("sdj_photos")||"{}"); }catch(e){ return {}; } }
 function setPhotos(o){ LS.set("sdj_photos", JSON.stringify(o)); }
 function isCertified(id){ return !!photos()[id]; }
@@ -84,10 +91,13 @@ seoul-pyeongnaeng,서울,평양냉면,jinmi,진미평양냉면,강남구 논현,
 seoul-pyeongnaeng,서울,평양냉면,nampo,남포면옥,중구 무교동,깔끔한 국물,빈대떡,7
 seoul-pyeongnaeng,서울,평양냉면,jungin,정인면옥,중구 주교동,가성비 노포,만두,8`;
 async function load(){
+  try{ const {data}=await db.auth.getSession(); session=data.session||null; }catch(e){}
+  db.auth.onAuthStateChange(async (_e,s)=>{ session=s; await loadMyVotes(); render(); });
   let rows;
   try{ rows=await fetchSheet(); }
   catch(e){ console.warn("[삼대집] 시트 로드 실패 → 내장 데이터 사용 (배포 시 라이브 시트):", e.message); rows=parseCSV(FALLBACK_CSV); }
   let votes={}; try{ votes=await fetchVotes(); }catch(e){ console.warn("[삼대집] 표 로드 실패:", e.message); }
+  await loadMyVotes();
   const b=buildLists(rows); state.lists=b.lists; state.order=b.order; state.regions=b.regions; state.votes=votes;
   if(!state.region) state.region=b.regions[0]||null;
   if(!state.curListId) state.curListId=b.order[0]||null;
@@ -106,21 +116,23 @@ function allCertified(listId){ const t=top3(listId); return t.length===3 && t.ev
 /* ===== 투표 (1리스트 1표 · 이동 · 취소) ===== */
 let busy=false;
 async function castVote(listId,id){
-  if(busy) return; const prev=myVotes[listId];
-  if(prev===id){ return cancelVote(listId); }
+  if(busy) return;
+  if(!session){ toast("카카오로 로그인하고 투표하세요"); go("me"); return; }
+  const prev=myVotes[listId]; if(prev===id){ return cancelVote(listId); }
   busy=true;
   if(prev) state.votes[prev]=Math.max(0,vote(prev)-1);
-  state.votes[id]=vote(id)+1; myVotes[listId]=id; saveVotes();
+  state.votes[id]=vote(id)+1; myVotes[listId]=id;
   if(navigator.vibrate)navigator.vibrate(24); render();
-  try{ if(prev) await db.rpc("bump_vote",{vote_id:prev,delta:-1}); await db.rpc("bump_vote",{vote_id:id,delta:1}); }catch(e){ console.error(e); }
-  busy=false; await refreshVotes();
+  try{ await db.rpc("cast_vote",{p_list:listId,p_candidate:id}); }catch(e){ console.error(e); toast("투표 실패 — 다시 시도"); }
+  busy=false; await refreshAll();
 }
 async function cancelVote(listId){
-  if(busy) return; const prev=myVotes[listId]; if(!prev) return; busy=true;
-  state.votes[prev]=Math.max(0,vote(prev)-1); delete myVotes[listId]; saveVotes(); toast("표를 취소했어요"); render();
-  try{ await db.rpc("bump_vote",{vote_id:prev,delta:-1}); }catch(e){ console.error(e); }
-  busy=false; await refreshVotes();
+  if(busy||!session) return; const prev=myVotes[listId]; if(!prev) return; busy=true;
+  state.votes[prev]=Math.max(0,vote(prev)-1); delete myVotes[listId]; toast("표를 취소했어요"); render();
+  try{ await db.rpc("cancel_vote",{p_list:listId}); }catch(e){ console.error(e); }
+  busy=false; await refreshAll();
 }
+async function refreshAll(){ try{ state.votes=await fetchVotes(); }catch(e){} await loadMyVotes(); render(); }
 
 /* ===== 사진 인증 (EXIF 촬영일) ===== */
 let pickTarget=null;
@@ -398,12 +410,12 @@ function stampOverlay(){
 function closeStamp(){ state.stamp=false; render(); }
 
 /* ---- 마이 (로그인/로그아웃) ---- */
-let user=(()=>{ try{ return JSON.parse(LS.get("sdj_user")||"null"); }catch(e){ return null; } })();
-function loginMock(provider){ const names={kakao:"카카오 사용자",naver:"네이버 사용자",guest:"게스트"};
-  user={provider,name:names[provider]||"사용자",since:new Date().toLocaleDateString("ko-KR",{year:"2-digit",month:"2-digit",day:"2-digit"})+" 시작"};
-  LS.set("sdj_user",JSON.stringify(user)); if(provider!=="guest") toast(names[provider]+" 연결됨 (데모)"); render(); }
-function logout(){ user=null; LS.del("sdj_user"); toast("로그아웃됐어요"); render(); }
-function viewMe(){ return user? meIn(): meOut(); }
+async function loginKakao(){ try{ await db.auth.signInWithOAuth({provider:"kakao",options:{redirectTo:location.origin}}); }catch(e){ toast("로그인 시작 실패"); console.error(e); } }
+function naverSoon(){ toast("네이버 로그인은 준비 중이에요"); }
+function loginGuest(){ guest=true; LS.set("sdj_guest","1"); render(); }
+function loginMock(p){ return p==="kakao"?loginKakao():p==="naver"?naverSoon():loginGuest(); }
+async function logout(){ guest=false; LS.del("sdj_guest"); try{ await db.auth.signOut(); }catch(e){} session=null; myVotes={}; toast("로그아웃됐어요"); render(); }
+function viewMe(){ return currentUser()? meIn(): meOut(); }
 function meOut(){
   return `<div style="animation:b3in .3s ease both;padding:14px 20px 104px">
     <div style="padding:28px 0 6px;text-align:center">
@@ -426,6 +438,7 @@ function meOut(){
   </div>`;
 }
 function meIn(){
+  const user=currentUser();
   const P={kakao:{t:"카카오",bg:"#FEE500",c:"#191600"},naver:{t:"네이버",bg:"#03C75A",c:"#fff"},guest:{t:"게스트",bg:"rgba(255,255,255,.16)",c:"#fff"}}[user.provider]||{t:"계정",bg:"rgba(255,255,255,.16)",c:"#fff"};
   const votes=Object.keys(myVotes).length, certs=certCount(), done=state.order.filter(id=>allCertified(id)).length;
   const stats=[[votes,"투표한 목록"],[certs,"인증 사진"],[done,"완주"]];
