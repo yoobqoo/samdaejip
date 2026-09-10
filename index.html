@@ -67,7 +67,7 @@ const db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 const LS={get:k=>{try{return localStorage.getItem(k);}catch(e){return null;}},set:(k,v)=>{try{localStorage.setItem(k,v);}catch(e){}},del:k=>{try{localStorage.removeItem(k);}catch(e){}}};
 
 /* ===== 상태 ===== */
-const state={ screen:"home", region:null, curListId:null, lists:{}, order:[], regions:[], votes:{}, loaded:false, stamp:false, certRegion:"전체" };
+const state={ screen:"home", region:null, curListId:null, lists:{}, order:[], regions:[], votes:{}, loaded:false, stamp:false, certRegion:"전체", expanded:{} };
 let myVotes={}; // { listId: candId } — 로그인 시 서버(user_votes)에서 로드
 let session=null; let guest=(LS.get("sdj_guest")==="1");
 function currentUser(){
@@ -92,9 +92,9 @@ function parseCSV(text){ const lines=text.replace(/\r/g,"").split("\n").filter(l
 function buildLists(rows){
   const lists={}, order=[], regions=[], rseen={};
   rows.forEach(r=>{ if(!r.list||!r.id) return;
-    if(!lists[r.list]){ lists[r.list]={id:r.list,region:r.region||"",category:r.category||"",title:((r.region||"")+" "+(r.category||"")).trim()||r.list,cands:[]}; order.push(r.list);
+    if(!lists[r.list]){ lists[r.list]={id:r.list,region:r.region||"",category:r.category||"",title:r.list||((r.region||"")+" "+(r.category||"")).trim(),cands:[]}; order.push(r.list);
       if(!rseen[r.region]){ rseen[r.region]=1; regions.push(r.region); } }
-    lists[r.list].cands.push({id:r.id,name:r.name||r.id,district:r.district||"",blurb:r.blurb||"",signature:r.signature||"",order:parseInt(r.order)||999});
+    lists[r.list].cands.push({id:r.id,name:r.name||r.id,district:r.district||"",blurb:r.blurb||"",signature:r.signature||"",order:parseInt(r.order)||999,photo:r.photo||""});
   });
   Object.values(lists).forEach(L=>L.cands.sort((a,b)=>a.order-b.order));
   return {lists,order,regions};
@@ -104,14 +104,14 @@ function buildLists(rows){
 async function fetchSheet(){ const res=await fetch(SHEET_CSV); if(!res.ok) throw new Error("sheet "+res.status); return parseCSV(await res.text()); }
 async function fetchVotes(){ const {data,error}=await db.from("vote_counts").select("id,count"); const m={}; if(!error&&data) data.forEach(r=>m[r.id]=r.count); return m; }
 const FALLBACK_CSV=`list,region,category,id,name,district,blurb,signature,order
-seoul-pyeongnaeng,서울,평양냉면,uraeok,우래옥,중구 주교동,묵직한 육수의 교과서,불고기 백반,1
-seoul-pyeongnaeng,서울,평양냉면,eulmil,을밀대,마포구 염리동,진한 살얼음 육수,제육,2
-seoul-pyeongnaeng,서울,평양냉면,pildong,필동면옥,중구 필동,슴슴함의 정석,제육,3
-seoul-pyeongnaeng,서울,평양냉면,bong,봉피양,강남구 방이동,정갈한 한 그릇,녹두전,4
-seoul-pyeongnaeng,서울,평양냉면,pyeongrae,평래옥,중구 을지로,노포의 품격,만두,5
-seoul-pyeongnaeng,서울,평양냉면,jinmi,진미평양냉면,강남구 논현,구수한 면수,제육,6
-seoul-pyeongnaeng,서울,평양냉면,nampo,남포면옥,중구 무교동,깔끔한 국물,빈대떡,7
-seoul-pyeongnaeng,서울,평양냉면,jungin,정인면옥,중구 주교동,가성비 노포,만두,8`;
+서울 3대 평냉,서울,평양냉면,uraeok,우래옥,중구 주교동,묵직한 육수의 교과서,불고기 백반,1
+서울 3대 평냉,서울,평양냉면,eulmil,을밀대,마포구 염리동,진한 살얼음 육수,제육,2
+서울 3대 평냉,서울,평양냉면,pildong,필동면옥,중구 필동,슴슴함의 정석,제육,3
+서울 3대 평냉,서울,평양냉면,bong,봉피양,강남구 방이동,정갈한 한 그릇,녹두전,4
+서울 3대 평냉,서울,평양냉면,pyeongrae,평래옥,중구 을지로,노포의 품격,만두,5
+서울 3대 평냉,서울,평양냉면,jinmi,진미평양냉면,강남구 논현,구수한 면수,제육,6
+서울 3대 평냉,서울,평양냉면,nampo,남포면옥,중구 무교동,깔끔한 국물,빈대떡,7
+서울 3대 평냉,서울,평양냉면,jungin,정인면옥,중구 주교동,가성비 노포,만두,8`;
 async function load(){
   try{ const {data}=await db.auth.getSession(); session=data.session||null; }catch(e){}
   db.auth.onAuthStateChange(async (_e,s)=>{ session=s; await loadMyVotes(); render(); });
@@ -201,6 +201,7 @@ picker.addEventListener("change", async (e)=>{
 function go(screen){ state.screen=screen; window.scrollTo(0,0); render(); }
 function pickRegion(id){ state.region=id; render(); }
 function pickCertRegion(r){ state.certRegion=r; render(); }
+function toggleExpand(id){ state.expanded[id]=!state.expanded[id]; render(); }
 function openList(listId){ state.curListId=listId; go("list"); }
 function openDetail(listId){ state.curListId=listId; go("detail"); }
 
@@ -292,9 +293,9 @@ function viewList(){
         <div style="flex:1;font:700 11px/1 Pretendard;letter-spacing:.2em;color:rgba(255,255,255,.8);text-align:center">${esc(L.region)} · 삼대집</div>
         <div style="width:44px"></div>
       </div>
-      <div class="dp" style="font:800 42px/.98 Pretendard;letter-spacing:-.05em;color:#0a0a0a">${esc(L.title)}</div>
+      <div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:2px">${L.title.split("").filter(ch=>ch.trim()).map(ch=>`<span style="display:inline-flex;align-items:center;justify-content:center;background:#0a0a0a;color:#fff;font-family:'SlowGothic',Pretendard,sans-serif;font-size:30px;min-width:44px;height:52px;padding:0 5px;border-radius:5px">${esc(ch)}</span>`).join("")}</div>
       <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:12px;margin-top:16px">
-        <div style="flex:1;font:500 12.5px/1.4 Pretendard;color:rgba(255,255,255,.9)">집단지성으로 정한 ${esc(L.title)} 3대. 한 표로 순위가 바뀝니다.</div>
+        <div style="flex:1;font:600 13px/1.4 Pretendard;color:rgba(255,255,255,.95)">진짜 '사람들'이 정합니다</div>
         <div style="text-align:right;flex:none">
           <div style="font:800 22px/1 Pretendard;color:#fff">${total.toLocaleString()}</div>
           <div style="font:500 10.5px/1 Pretendard;color:rgba(255,255,255,.7);margin-top:4px">누적 투표</div></div>
@@ -329,22 +330,30 @@ function viewList(){
   </div>`;
 }
 function top3Card(listId,s,rank,total,mv){
-  const pct=Math.round((s.v||0)/total*100); const mine=mv===s.id; const cert=isCertified(s.id);
+  const pct=Math.round((s.v||0)/total*100); const mine=mv===s.id; const cert=isCertified(s.id); const exp=!!state.expanded[s.id];
   return `<div style="background:#fff;border-radius:22px;${mine?"box-shadow:0 0 0 2px #f53d0c":"box-shadow:0 1px 0 rgba(10,10,10,.05)"}">
     <div style="display:flex;align-items:flex-start;gap:13px;padding:17px 17px 12px">
       <div style="flex:none;width:34px;height:34px;background:url('assets/medal/${['gold','silver','bronze'][rank-1]||'bronze'}.png') center/175% auto no-repeat" role="img" aria-label="${rank}위"></div>
       <div style="flex:1;min-width:0">
-        <div style="font:800 19px/1.2 Pretendard;letter-spacing:-.03em;color:#0a0a0a">${esc(s.name)}</div>
-        ${s.blurb?`<div style="font:600 12.5px/1.4 Pretendard;color:#f53d0c;margin-top:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">“${esc(s.blurb)}”</div>`:""}
-        <div style="font:500 11px/1.4 Pretendard;color:rgba(10,10,10,.4);margin-top:4px">${esc(s.district)}${s.signature?" · "+esc(s.signature):""}</div></div>
-      <div style="flex:none;width:26px;height:26px;border-radius:99px;display:flex;align-items:center;justify-content:center;font:800 12px/1 Pretendard;${cert?"background:#0a0a0a;color:#fff":"background:rgba(10,10,10,.06);color:rgba(10,10,10,.3)"}">${cert?"✓":""}</div>
+        <div style="display:flex;align-items:baseline;gap:8px">
+          <div style="font:800 19px/1.2 Pretendard;letter-spacing:-.03em;color:#0a0a0a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(s.name)}</div>
+          <div style="flex:none;font:500 11px/1 Pretendard;color:rgba(10,10,10,.42);white-space:nowrap">${esc(s.district)}</div>
+        </div>
+        ${s.blurb?`<div style="font:600 12.5px/1.5 Pretendard;color:#f53d0c;margin-top:6px;${exp?"":"white-space:nowrap;overflow:hidden;text-overflow:ellipsis"}">“${esc(s.blurb)}”</div>`:""}
+      </div>
+      <button onclick="toggleExpand('${s.id}')" style="flex:none;width:30px;height:30px;border-radius:99px;border:none;cursor:pointer;background:rgba(10,10,10,.06);color:#0a0a0a;font:300 22px/1 Pretendard;display:flex;align-items:center;justify-content:center;transition:transform .2s;${exp?"transform:rotate(45deg)":""}" aria-label="상세">+</button>
     </div>
+    ${exp?`<div style="padding:0 17px 14px">
+      <div style="border-radius:14px;overflow:hidden;background:${s.photo?`url('${esc(s.photo)}') center/cover`:"rgba(10,10,10,.05)"};aspect-ratio:16/10;display:flex;align-items:center;justify-content:center">
+        ${s.photo?"":`<div style="font:600 11.5px/1.6 Pretendard;color:rgba(10,10,10,.32);text-align:center">가게·음식 사진<br>(추가 예정)</div>`}
+      </div>
+    </div>`:""}
     <div style="padding:0 17px 15px">
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
         <div style="flex:1;height:9px;background:rgba(10,10,10,.07);border-radius:99px;overflow:hidden"><div style="height:100%;background:#f53d0c;border-radius:99px;transition:width .45s cubic-bezier(.2,.8,.2,1);width:${pct}%"></div></div>
         <div style="flex:none;font:800 13px/1 Pretendard;color:#0a0a0a">${s.v}표</div></div>
       <div style="display:flex;gap:7px">
-        <button onclick="castVote('${listId}','${s.id}')" style="flex:1;border:none;cursor:pointer;border-radius:12px;padding:12px 0;font:700 12.5px/1 Pretendard;${mine?"background:#f53d0c;color:#fff":"background:rgba(10,10,10,.06);color:#0a0a0a"}">${mine?"내 표 ✓":"이 집에 투표"}</button>
+        <button onclick="castVote('${listId}','${s.id}')" style="flex:1;border:none;cursor:pointer;border-radius:12px;padding:12px 0;font:700 12.5px/1 Pretendard;${mine?"background:#f53d0c;color:#fff":"background:rgba(10,10,10,.06);color:#0a0a0a"}">${mine?"내 표 ✓":"이 집에 한표"}</button>
         <button onclick="openCert('${s.id}')" style="flex:none;border:none;cursor:pointer;border-radius:12px;padding:12px 16px;font:700 12.5px/1 Pretendard;${cert?"background:#0a0a0a;color:#fff":"background:rgba(10,10,10,.06);color:#0a0a0a"}">${cert?"인증됨":"사진 인증"}</button></div>
     </div></div>`;
 }
@@ -354,7 +363,7 @@ function candCard(listId,c,rank,mv){
     <div style="flex:none;font:800 15px/1 Pretendard;color:rgba(10,10,10,.32);width:20px">${rank}</div>
     <div style="flex:1;min-width:0">
       <div style="font:700 15px/1.2 Pretendard;letter-spacing:-.02em;color:#0a0a0a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(c.name)}</div>
-      <div style="font:500 10.5px/1.3 Pretendard;color:rgba(10,10,10,.42);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(c.district)}${c.signature?" · "+esc(c.signature):""}</div></div>
+      <div style="font:500 10.5px/1.3 Pretendard;color:rgba(10,10,10,.42);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(c.district)}</div></div>
     <div style="flex:none;font:700 11.5px/1 Pretendard;color:rgba(10,10,10,.5)">${c.v}표</div>
     <button onclick="castVote('${listId}','${c.id}')" style="flex:none;border:none;cursor:pointer;border-radius:99px;padding:9px 15px;font:700 12px/1 Pretendard;${mine?"background:#f53d0c;color:#fff":"background:rgba(10,10,10,.07);color:#0a0a0a"}">${mine?"✓":"투표"}</button>
   </div>`;
