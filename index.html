@@ -24,6 +24,13 @@
   @keyframes b3in{ from{opacity:0; transform:translateY(8px);} to{opacity:1; transform:none;} }
   @keyframes b3slide{ from{opacity:0; transform:translateX(14px);} to{opacity:1; transform:none;} }
   @keyframes b3pop{ 0%{transform:scale(1.5);opacity:0;} 60%{transform:scale(.94);} 100%{transform:scale(1);opacity:1;} }
+  @font-face{ font-family:'SlowGothic'; src:url('https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_2304-01@1.0/neurimboGothicRegular.woff2') format('woff2'); font-weight:normal; font-display:swap; }
+  .dp{ font-family:'SlowGothic','Pretendard',sans-serif !important; }
+  @keyframes coinDrop{ 0%{opacity:0;transform:translateY(-74px) scale(1.7) rotate(-12deg);} 55%{opacity:1;transform:translateY(0) scale(.9) rotate(4deg);} 74%{transform:scale(1.06) rotate(-2deg);} 100%{transform:scale(1) rotate(0);} }
+  @keyframes shockR{ 0%{opacity:.5;transform:scale(.25);} 100%{opacity:0;transform:scale(2.6);} }
+  @keyframes cardShake{ 0%,100%{transform:translate(0,0);} 25%{transform:translate(-5px,2px);} 50%{transform:translate(5px,-2px);} 75%{transform:translate(-3px,1px);} }
+  @keyframes shineSweep{ 0%{transform:translateX(-170%) skewX(-18deg);opacity:0;} 25%{opacity:.95;} 70%{opacity:.95;} 100%{transform:translateX(230%) skewX(-18deg);opacity:0;} }
+  @keyframes txtUp{ 0%{opacity:0;transform:translateY(10px);} 100%{opacity:1;transform:none;} }
   #toast{ position:fixed; left:50%; bottom:96px; transform:translate(-50%,20px); opacity:0; transition:.28s;
     background:#0a0a0a; color:#fff; font:600 12.5px/1.4 inherit; padding:11px 18px; border-radius:99px; z-index:120; white-space:nowrap; pointer-events:none; max-width:90%; }
   #toast.show{ opacity:1; transform:translate(-50%,0); }
@@ -53,6 +60,9 @@ const BADGES={
   "수원|갈비":"assets/badge-suwon-galbi.png"
 };
 function badgeFor(region,cat){ return BADGES[region+"|"+cat]||"assets/badge-back.png"; }
+// 각 뱃지 코인이 캔버스를 채우는 비율 (측정값) — 이걸로 시각 크기 통일
+const COIN_RATIO={"badge-jeonguk-bbang":0.556,"badge-seoul-jokbal":0.55,"badge-seoul-sundae":0.681,"badge-seoul-naeng":0.575,"badge-seoul-tteok":0.65,"badge-daegu-tteok":0.681,"badge-daegu-chicken":0.669,"badge-jeju-gimbap":0.681,"badge-suwon-galbi":0.662,"badge-back":0.675};
+function badgeBg(region,cat,frac){ const src=badgeFor(region,cat); const key=src.replace("assets/","").replace(".png",""); const r=COIN_RATIO[key]||0.62; const size=((frac||0.92)/r*100).toFixed(1); return `url('${src}') center/${size}% auto no-repeat`; }
 const db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 const LS={get:k=>{try{return localStorage.getItem(k);}catch(e){return null;}},set:(k,v)=>{try{localStorage.setItem(k,v);}catch(e){}},del:k=>{try{localStorage.removeItem(k);}catch(e){}}};
 
@@ -181,7 +191,7 @@ picker.addEventListener("change", async (e)=>{
     const url=cv.toDataURL("image/jpeg",0.72);
     const p=photos(); p[pickTarget]={photo:url,date:dateStr,src:ex?"exif":"file"}; setPhotos(p);
     pickTarget=null; if(navigator.vibrate)navigator.vibrate(40);
-    if(!wasComplete && allCertified(state.curListId)){ state.stamp=true; }
+    if(!wasComplete && allCertified(state.curListId)){ state.stamp=true; if(navigator.vibrate)navigator.vibrate([0,55,60,130]); }
     toast((ex?"📷 촬영일 ":"🗓 ")+dateStr+" 방문으로 인증됐어요"); render();
   }; img.src=ev.target.result; };
   rd.readAsDataURL(f);
@@ -246,12 +256,12 @@ function viewHome(){
 function tileCard(id){
   const L=state.lists[id]; const b=badgeFor(L.region,L.category);
   return `<div onclick="openList('${id}')" style="position:relative;cursor:pointer;height:158px;border-radius:20px;overflow:hidden;background:linear-gradient(160deg,#ff6a3d,#f53d0c);display:flex;flex-direction:column">
-    <img src="${b}" alt="" style="position:absolute;right:-16px;top:48%;transform:translateY(-50%);width:108px;height:108px;object-fit:contain;filter:drop-shadow(0 6px 14px rgba(0,0,0,.28))">
+    <div style="position:absolute;right:-14px;top:48%;transform:translateY(-50%);width:120px;height:120px;background:${badgeBg(L.region,L.category,0.92)};filter:drop-shadow(0 6px 14px rgba(0,0,0,.28))"></div>
     <div style="position:relative;display:flex;align-items:flex-start;justify-content:space-between;padding:15px 15px 0">
       <div style="font:700 9.5px/1 Pretendard;letter-spacing:.14em;color:rgba(255,255,255,.9)">${esc(L.region)}</div>
       <div style="font:700 15px/1 Pretendard;color:#fff">↗</div></div>
     <div style="position:relative;margin-top:auto;padding:0 15px 15px">
-      <div style="font:800 20px/1.1 Pretendard;letter-spacing:-.03em;color:#fff">${esc(L.category)}</div>
+      <div class="dp" style="font:800 20px/1.1 Pretendard;letter-spacing:-.03em;color:#fff">${esc(L.category)}</div>
       <div style="font:600 11px/1.4 Pretendard;color:rgba(255,255,255,.9);margin-top:3px">${L.cands.length}곳 후보 · ${listTotal(id).toLocaleString()}표</div></div></div>`;
 }
 
@@ -269,7 +279,7 @@ function viewList(){
         <div style="flex:1;font:700 11px/1 Pretendard;letter-spacing:.2em;color:rgba(255,255,255,.8);text-align:center">${esc(L.region)} · 삼대집</div>
         <div style="width:44px"></div>
       </div>
-      <div style="font:800 42px/.98 Pretendard;letter-spacing:-.05em;color:#0a0a0a">${esc(L.title)}</div>
+      <div class="dp" style="font:800 42px/.98 Pretendard;letter-spacing:-.05em;color:#0a0a0a">${esc(L.title)}</div>
       <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:12px;margin-top:16px">
         <div style="flex:1;font:500 12.5px/1.4 Pretendard;color:rgba(255,255,255,.9)">집단지성으로 정한 ${esc(L.title)} 3대. 한 표로 순위가 바뀝니다.</div>
         <div style="text-align:right;flex:none">
@@ -285,11 +295,11 @@ function viewList(){
     </div>
     <div style="padding:18px 20px 0">
       <div style="display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:12px">
-        <div style="font:800 18px/1 Pretendard;letter-spacing:-.03em;color:#0a0a0a">현재 3대</div>
+        <div class="dp" style="font:800 18px/1 Pretendard;letter-spacing:-.03em;color:#0a0a0a">현재 3대</div>
         <div style="font:500 11px/1 Pretendard;color:rgba(10,10,10,.45)">투표로 언제든 바뀝니다</div></div>
       <div style="display:flex;flex-direction:column;gap:9px">${t3.map((s,i)=>top3Card(L.id,s,i+1,total,mv)).join("")}</div>
       ${cands.length?`<div style="display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin:26px 0 0">
-        <div style="font:800 18px/1 Pretendard;letter-spacing:-.03em;color:#0a0a0a">3위 밖 후보</div>
+        <div class="dp" style="font:800 18px/1 Pretendard;letter-spacing:-.03em;color:#0a0a0a">3위 밖 후보</div>
         <div style="font:500 11px/1 Pretendard;color:rgba(10,10,10,.45)">${gap}표 차로 갈렸어요</div></div>
       <div style="height:1px;background:rgba(10,10,10,.12);margin:11px 0 12px"></div>
       <div style="display:flex;flex-direction:column;gap:7px">${cands.map((c,i)=>candCard(L.id,c,i+4,mv)).join("")}</div>`:""}
@@ -309,7 +319,7 @@ function top3Card(listId,s,rank,total,mv){
   const pct=Math.round((s.v||0)/total*100); const mine=mv===s.id; const cert=isCertified(s.id);
   return `<div style="background:#fff;border-radius:22px;${mine?"box-shadow:0 0 0 2px #f53d0c":"box-shadow:0 1px 0 rgba(10,10,10,.05)"}">
     <div style="display:flex;align-items:flex-start;gap:13px;padding:17px 17px 12px">
-      <div style="font:800 26px/.9 Pretendard;letter-spacing:-.05em;color:#f53d0c;width:26px">${rank}</div>
+      <div class="dp" style="font:800 26px/.9 Pretendard;letter-spacing:-.05em;color:#f53d0c;width:26px">${rank}</div>
       <div style="flex:1;min-width:0">
         <div style="font:800 19px/1.2 Pretendard;letter-spacing:-.03em;color:#0a0a0a">${esc(s.name)}</div>
         ${s.blurb?`<div style="font:600 12.5px/1.5 Pretendard;color:#f53d0c;margin-top:6px">“${esc(s.blurb)}”</div>`:""}
@@ -346,7 +356,7 @@ function viewCert(){
   return `
   <div style="animation:b3in .3s ease both;padding:16px 20px 104px">
     <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:12px;margin-bottom:20px">
-      <div><div style="font:800 46px/.92 Pretendard;letter-spacing:-.045em;color:#0a0a0a">${doneCount}</div>
+      <div><div class="dp" style="font:800 46px/.92 Pretendard;letter-spacing:-.045em;color:#0a0a0a">${doneCount}</div>
         <div style="font:500 12.5px/1.4 Pretendard;color:rgba(10,10,10,.45);margin-top:8px">성지순례 완주</div></div>
       <div style="font:800 20px/1 Pretendard;letter-spacing:-.04em;color:rgba(10,10,10,.25)">삼대집.</div>
     </div>
@@ -354,7 +364,7 @@ function viewCert(){
       ${state.order.map(id=>{ const t=top3(id); const n=t.filter(s=>isCertified(s.id)).length; const complete=allCertified(id); const L=state.lists[id];
         return `<div onclick="openDetail('${id}')" style="cursor:pointer;background:${complete?"linear-gradient(160deg,#fff,#ffeee7)":"#fff"};border-radius:20px;padding:16px;${complete?"box-shadow:0 0 0 2px #f53d0c":""}">
           <div style="display:flex;align-items:center;gap:14px">
-            <div style="flex:none;width:52px;height:52px;border-radius:99px;background:${complete?"transparent":"rgba(10,10,10,.06)"};${complete?`background-image:url('${badgeFor(L.region,L.category)}');background-size:cover;background-position:center;`:""}"></div>
+            <div style="flex:none;width:52px;height:52px;border-radius:99px;background:${complete?badgeBg(L.region,L.category,1.02):"rgba(10,10,10,.06)"}"></div>
             <div style="flex:1;min-width:0">
               <div style="font:800 16px/1.2 Pretendard;letter-spacing:-.03em;color:#0a0a0a">${esc(L.title)}</div>
               <div style="font:500 11.5px/1.4 Pretendard;color:rgba(10,10,10,.5);margin-top:4px">${complete?"완주 · 인증 뱃지 획득":n+"/3 인증"}</div></div>
@@ -384,14 +394,14 @@ function viewDetail(){
       <div style="width:44px"></div>
     </div>
     <div style="padding:24px 20px 0;text-align:center">
-      <div style="font:800 30px/1.1 Pretendard;letter-spacing:-.04em;color:#0a0a0a">${esc(L.title)}</div>
+      <div class="dp" style="font:800 30px/1.1 Pretendard;letter-spacing:-.04em;color:#0a0a0a">${esc(L.title)}</div>
       <div style="font:500 12px/1.5 Pretendard;color:rgba(10,10,10,.45);margin-top:9px">3곳 중 ${n}곳 인증 · 세 곳을 모두 채우면 완주</div>
     </div>
     <div style="position:relative;width:100%;max-width:330px;height:344px;margin:16px auto 0">
       <svg viewBox="0 0 100 100" preserveAspectRatio="none" style="position:absolute;inset:0;width:100%;height:100%">
         <polygon points="50,22 23,80 77,80" fill="none" stroke="${complete?'#f53d0c':'rgba(10,10,10,.15)'}" stroke-width="1.2" stroke-dasharray="${complete?'0':'3 3'}"/>
       </svg>
-      <div style="position:absolute;left:50%;top:51%;transform:translate(-50%,-50%);width:76px;height:76px;border-radius:99px;background:url('${badgeFor(L.region,L.category)}') center/cover;${complete?"box-shadow:0 0 0 4px rgba(245,61,12,.25);":"filter:grayscale(1);opacity:.4;"}"></div>
+      <div style="position:absolute;left:50%;top:51%;transform:translate(-50%,-50%);width:76px;height:76px;border-radius:99px;background:${badgeBg(L.region,L.category,1.0)};${complete?"box-shadow:0 0 0 4px rgba(245,61,12,.25);":"filter:grayscale(1);opacity:.4;"}"></div>
       ${nodes}
     </div>
     <div style="padding:6px 20px 0">
@@ -412,18 +422,25 @@ function viewDetail(){
 /* ---- 완주 뱃지 ---- */
 function stampOverlay(){
   const L=state.lists[state.curListId]; const title=L?L.title:"";
-  return `<div onclick="closeStamp()" style="position:fixed;inset:0;max-width:440px;margin:0 auto;background:rgba(10,10,10,.68);display:flex;align-items:center;justify-content:center;padding:32px;cursor:pointer;z-index:110">
-    <div style="background:#f53d0c;border-radius:28px;padding:34px 26px 26px;text-align:center;width:100%;animation:b3pop .5s cubic-bezier(.2,.9,.3,1.2) both">
-      <div style="width:170px;height:170px;margin:0 auto;background:url('${badgeFor(L?L.region:'',L?L.category:'')}') center/contain no-repeat;filter:drop-shadow(0 10px 20px rgba(0,0,0,.3))"></div>
-      <div style="font:800 26px/1.1 Pretendard;letter-spacing:-.04em;color:#0a0a0a;margin-top:14px">${esc(title)} 완주</div>
-      <div style="font:500 12.5px/1.6 Pretendard;color:rgba(255,255,255,.92);margin-top:8px">3대 맛집 전부 방문 인증 완료</div>
-      <div style="font:500 10px/1 ui-monospace,Menlo,monospace;color:rgba(10,10,10,.55);margin-top:20px;letter-spacing:.1em">TAP TO CLOSE</div>
+  return `<div onclick="closeStamp()" style="position:fixed;inset:0;max-width:440px;margin:0 auto;background:rgba(10,10,10,.72);display:flex;align-items:center;justify-content:center;padding:32px;cursor:pointer;z-index:110">
+    <div style="background:linear-gradient(160deg,#ff5a2e,#f53d0c);border-radius:28px;padding:40px 26px 26px;text-align:center;width:100%;animation:cardShake .42s ease .34s both">
+      <div style="position:relative;width:180px;height:180px;margin:0 auto">
+        <div style="position:absolute;inset:0;border-radius:99px;border:3px solid rgba(255,255,255,.8);animation:shockR .7s ease .34s both"></div>
+        <div style="position:absolute;inset:0;border-radius:99px;border:2px solid rgba(255,255,255,.5);animation:shockR .85s ease .44s both"></div>
+        <div style="position:absolute;inset:0;background:${badgeBg(L?L.region:'',L?L.category:'',0.92)};filter:drop-shadow(0 10px 20px rgba(0,0,0,.35));animation:coinDrop .6s cubic-bezier(.2,.8,.3,1) both"></div>
+        <div style="position:absolute;inset:0;border-radius:99px;overflow:hidden;pointer-events:none">
+          <div style="position:absolute;top:-30%;left:0;width:42%;height:160%;background:linear-gradient(90deg,transparent,rgba(255,255,255,.9),transparent);animation:shineSweep 1s ease .72s both"></div>
+        </div>
+      </div>
+      <div class="dp" style="font:800 27px/1.1 Pretendard;letter-spacing:-.04em;color:#0a0a0a;margin-top:18px;animation:txtUp .4s ease .62s both">${esc(title)} 완주</div>
+      <div style="font:600 12.5px/1.6 Pretendard;color:rgba(255,255,255,.95);margin-top:8px;animation:txtUp .4s ease .74s both">3대 맛집 전부 방문 인증 완료</div>
+      <div style="font:500 10px/1 ui-monospace,Menlo,monospace;color:rgba(10,10,10,.5);margin-top:20px;letter-spacing:.1em;animation:txtUp .4s ease .92s both">TAP TO CLOSE</div>
     </div></div>`;
 }
 function closeStamp(){ state.stamp=false; render(); }
 
 /* ---- 마이 (로그인/로그아웃) ---- */
-async function loginKakao(){ try{ await db.auth.signInWithOAuth({provider:"kakao",options:{redirectTo:location.origin}}); }catch(e){ toast("로그인 시작 실패"); console.error(e); } }
+async function loginKakao(){ try{ await db.auth.signInWithOAuth({provider:"kakao",options:{redirectTo:location.origin,scopes:"profile_nickname"}}); }catch(e){ toast("로그인 시작 실패"); console.error(e); } }
 function naverSoon(){ toast("네이버 로그인은 준비 중이에요"); }
 function loginGuest(){ guest=true; LS.set("sdj_guest","1"); render(); }
 function loginMock(p){ return p==="kakao"?loginKakao():p==="naver"?naverSoon():loginGuest(); }
@@ -433,7 +450,7 @@ function meOut(){
   return `<div style="animation:b3in .3s ease both;padding:14px 20px 104px">
     <div style="padding:28px 0 6px;text-align:center">
       <div style="width:150px;height:34px;margin:0 auto;background:url('assets/wordmark.png') center/152px auto no-repeat" role="img" aria-label="삼대집"></div>
-      <div style="font:800 25px/1.3 Pretendard;letter-spacing:-.04em;color:#0a0a0a;margin-top:22px">내 도장, 내 한 표<br>기기가 바뀌어도 그대로</div>
+      <div class="dp" style="font:800 25px/1.3 Pretendard;letter-spacing:-.04em;color:#0a0a0a;margin-top:22px">내 도장, 내 한 표<br>기기가 바뀌어도 그대로</div>
       <div style="font:500 12.5px/1.7 Pretendard;color:rgba(10,10,10,.5);margin-top:11px">3초 만에 시작하고 인증 기록과 투표를 저장하세요.</div>
     </div>
     <div style="display:flex;flex-direction:column;gap:8px;margin-top:26px">
