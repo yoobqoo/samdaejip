@@ -335,14 +335,11 @@ function viewList(){
   return `
   <div style="animation:b3slide .3s ease both;padding-bottom:104px">
     <div style="background:#f53d0c;padding:14px 20px 24px">
-      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:22px">
+      <div style="display:flex;align-items:center;margin-bottom:22px">
         <button onclick="go('home')" style="width:44px;height:44px;border-radius:99px;border:none;background:rgba(255,255,255,.2);color:#fff;font:700 19px/1 Pretendard;cursor:pointer">←</button>
-        <div style="flex:1;font:700 11px/1 Pretendard;letter-spacing:.2em;color:rgba(255,255,255,.8);text-align:center">${esc(L.region)} · 삼대집</div>
-        <div style="width:44px"></div>
       </div>
-      <div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:2px">${L.title.split("").filter(ch=>ch.trim()).map(ch=>`<span style="display:inline-flex;align-items:center;justify-content:center;background:#0a0a0a;color:#fff;font-family:'SlowGothic',Pretendard,sans-serif;font-size:30px;min-width:44px;height:52px;padding:0 5px;border-radius:5px">${esc(ch)}</span>`).join("")}</div>
-      <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:12px;margin-top:16px">
-        <div style="flex:1;font:600 13px/1.4 Pretendard;color:rgba(255,255,255,.95)">진짜 '사람들'이 정합니다</div>
+      ${(()=>{const t=L.title;const i=t.indexOf("3대");const parts=(i>=0?[t.slice(0,i+2),t.slice(i+2)]:[t]).filter(p=>p.trim());const box=ch=>`<span style="display:inline-flex;align-items:center;justify-content:center;background:#0a0a0a;color:#fff;font-family:'SlowGothic',Pretendard,sans-serif;font-size:30px;min-width:44px;height:52px;padding:0 5px;border-radius:5px">${esc(ch)}</span>`;return `<div style="display:flex;flex-direction:column;gap:5px;margin-top:2px;align-items:flex-start">${parts.map(p=>`<div style="display:flex;flex-wrap:wrap;gap:5px">${p.split("").filter(ch=>ch.trim()).map(box).join("")}</div>`).join("")}</div>`;})()}
+      <div style="display:flex;align-items:flex-end;justify-content:flex-end;gap:12px;margin-top:16px">
         <div style="text-align:right;flex:none">
           <div style="font:800 22px/1 Pretendard;color:#fff">${total.toLocaleString()}</div>
           <div style="font:500 10.5px/1 Pretendard;color:rgba(255,255,255,.7);margin-top:4px">누적 투표</div></div>
@@ -355,9 +352,6 @@ function viewList(){
       </div>
     </div>
     <div style="padding:18px 20px 0">
-      <div style="display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:12px">
-        <div class="dp" style="font:800 18px/1 Pretendard;letter-spacing:-.03em;color:#0a0a0a">현시점 삼대집</div>
-        <div style="font:500 11px/1 Pretendard;color:rgba(10,10,10,.45)">투표로 언제든 바뀝니다</div></div>
       <div style="display:flex;flex-direction:column;gap:9px">${t3.map((s,i)=>top3Card(L.id,s,i+1,total,mv)).join("")}</div>
       ${cands.length?`<div style="display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin:26px 0 0">
         <div class="dp" style="font:800 18px/1 Pretendard;letter-spacing:-.03em;color:#0a0a0a">3위 밖 후보</div>
