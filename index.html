@@ -79,11 +79,15 @@ const BADGES={
   "대구|떡볶이":"assets/badge-daegu-tteok.webp",
   "대구|치킨":"assets/badge-daegu-chicken.webp",
   "제주|김밥":"assets/badge-jeju-gimbap.webp",
-  "수원|갈비":"assets/badge-suwon-galbi.webp"
+  "수원|갈비":"assets/badge-suwon-galbi.webp",
+  "서울|떡":"assets/badge-seoul_tteokjip.webp",
+  "인천|짬뽕":"assets/badge-incheon_jjamppong.webp",
+  "인천|닭강정":"assets/badge-incheon_gangjeong.webp",
+  "전주|콩나물국밥":"assets/badge-jeonju_kongnamul.webp"
 };
 function badgeFor(region,cat){ return BADGES[region+"|"+cat]||"assets/badge-back.webp"; }
 // 각 뱃지 코인이 캔버스를 채우는 비율 (측정값) — 이걸로 시각 크기 통일
-const COIN_RATIO={"badge-jeonguk-bbang":0.556,"badge-seoul-jokbal":0.55,"badge-seoul-sundae":0.681,"badge-seoul-naeng":0.575,"badge-seoul-tteok":0.65,"badge-daegu-tteok":0.681,"badge-daegu-chicken":0.669,"badge-jeju-gimbap":0.681,"badge-suwon-galbi":0.662,"badge-back":0.675};
+const COIN_RATIO={"badge-jeonguk-bbang":0.556,"badge-seoul-jokbal":0.55,"badge-seoul-sundae":0.681,"badge-seoul-naeng":0.575,"badge-seoul-tteok":0.65,"badge-daegu-tteok":0.681,"badge-daegu-chicken":0.669,"badge-jeju-gimbap":0.681,"badge-suwon-galbi":0.662,"badge-back":0.675,"badge-seoul_tteokjip":0.639,"badge-incheon_jjamppong":0.639,"badge-incheon_gangjeong":0.688,"badge-jeonju_kongnamul":0.666};
 function badgeBgOf(src,frac){ const key=src.replace("assets/","").replace(/\.(png|webp)$/,""); const r=COIN_RATIO[key]||0.62; const size=((frac||0.92)/r*100).toFixed(1); return `url('${src}') center/${size}% auto no-repeat`; }
 function badgeBg(region,cat,frac){ return badgeBgOf(badgeFor(region,cat),frac); }
 const BADGE_BACK="assets/badge-back.webp";
