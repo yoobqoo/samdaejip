@@ -513,34 +513,44 @@ function viewDetail(){
   const t3=top3(L.id); const p=photos(); const n=t3.filter(s=>isCertified(s.id)).length; const complete=allCertified(L.id);
   const rest=candsRanked(L.id).slice(3);
   const MEDALS=["gold","silver","bronze"];
-  const lockIco=`<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="rgba(10,10,10,.4)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>`;
+  const lockIco=`<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="rgba(10,10,10,.4)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>`;
   const cards=t3.map((s,i)=>{ const cert=isCertified(s.id); const ph=p[s.id];
-    return `<div>
-      <div style="display:flex;align-items:center;gap:7px;margin:0 2px 7px">
-        <div style="flex:none;width:18px;height:18px;background:url('assets/medal/${MEDALS[i]||'bronze'}.webp') center/175% auto no-repeat" role="img" aria-label="${i+1}위"></div>
-        <div style="font:800 14.5px/1.2 Pretendard;letter-spacing:-.02em;color:#0a0a0a">${esc(s.name)}</div>
-      </div>
-      <button onclick="openCert('${s.id}')" style="width:100%;aspect-ratio:16/9;border:none;cursor:pointer;border-radius:16px;overflow:hidden;position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;background:${cert?`#eee url('${esc(ph.photo)}') center/cover`:"rgba(10,10,10,.07)"};${cert?"animation:certGlow 1.9s ease-in-out infinite":"border:1px dashed rgba(10,10,10,.22)"}">
+    return `<div style="min-width:0">
+      <div onclick="openCert('${s.id}')" style="position:relative;width:100%;padding-bottom:100%;border-radius:13px;overflow:hidden;cursor:pointer;background:${cert?`#eee url('${esc(ph.photo)}') center/cover`:"rgba(10,10,10,.07)"};${cert?"animation:certGlow 1.9s ease-in-out infinite":"border:1px dashed rgba(10,10,10,.22)"}">
+        <div style="position:absolute;top:6px;left:6px;width:19px;height:19px;background:url('assets/medal/${MEDALS[i]||'bronze'}.webp') center/175% auto no-repeat;${cert?"":"filter:grayscale(1);opacity:.55"}" role="img" aria-label="${i+1}위"></div>
         ${cert
-          ?`<span style="position:absolute;left:11px;bottom:11px;background:rgba(10,10,10,.72);color:#fff;font:700 11px/1 Pretendard;padding:6px 11px;border-radius:99px">✓ ${esc(ph.date)}</span>`
-          :`${lockIco}<span style="font:700 12.5px/1 Pretendard;color:rgba(10,10,10,.45)">눌러서 인증하기</span>`}
-      </button>
+          ?`<div style="position:absolute;left:0;right:0;bottom:0;background:rgba(10,10,10,.6);color:#fff;font:700 9.5px/1.1 Pretendard;padding:5px 3px;text-align:center">✓ ${esc(ph.date)}</div>`
+          :`<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center">${lockIco}</div>`}
+      </div>
+      <div style="font:700 12px/1.25 Pretendard;letter-spacing:-.02em;color:#0a0a0a;margin-top:6px;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(s.name)}</div>
     </div>`; }).join("");
   return `
   <div style="${ea('b3slide','.3s')};padding-bottom:104px">
-    <div style="background:#f53d0c;padding:14px 20px 24px;position:relative;overflow:hidden">
+    <div id="shareArea" style="background:#fff">
+    <div style="background:#f53d0c;padding:14px 20px 22px;position:relative;overflow:hidden">
       <div style="position:absolute;right:14px;top:52%;transform:translateY(-50%);width:108px;height:108px;background:${badgeBg(L.region,L.category,0.92)};pointer-events:none;${complete?"filter:drop-shadow(0 6px 16px rgba(0,0,0,.3))":"filter:grayscale(.65);opacity:.3"}"></div>
       <div style="position:relative;z-index:1">
         <div style="display:flex;align-items:center;gap:12px;margin-bottom:18px">
-          <button onclick="go('cert')" style="width:44px;height:44px;border-radius:99px;border:none;background:rgba(255,255,255,.2);color:#fff;font:700 19px/1 Pretendard;cursor:pointer">←</button>
+          <button onclick="go('cert')" data-html2canvas-ignore style="width:44px;height:44px;border-radius:99px;border:none;background:rgba(255,255,255,.2);color:#fff;font:700 19px/1 Pretendard;cursor:pointer">←</button>
         </div>
         ${titleBoxes(L.title)}
         <div style="font:500 12px/1.5 Pretendard;color:rgba(255,255,255,.85);margin-top:14px">${complete?"완주 · 인증 뱃지 획득 🎉":"3곳 중 "+n+"곳 인증 · 세 곳을 모두 채우면 완주"}</div>
       </div>
     </div>
-    <div style="padding:20px 20px 0">
-      <div style="font:600 11.5px/1.6 Pretendard;color:rgba(10,10,10,.45);margin-bottom:14px">각 가게 박스를 눌러 방문을 인증하세요. 세 곳을 모두 채우면 완주 뱃지가 등장합니다.</div>
-      <div style="display:flex;flex-direction:column;gap:16px">${cards}</div>
+    <div style="padding:18px 20px 4px">
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:9px">${cards}</div>
+      <div style="display:flex;align-items:center;justify-content:center;gap:7px;margin-top:16px;padding-top:13px;border-top:1px solid rgba(10,10,10,.08)">
+        <img src="logo.png" alt="" width="18" height="18" decoding="async" style="width:18px;height:18px;border-radius:5px;display:block">
+        <div style="font:700 11px/1 Pretendard;color:rgba(10,10,10,.55)">삼대집 · 집단지성으로 정하는 진짜 3대 맛집</div>
+      </div>
+    </div>
+    </div>
+    <div style="padding:14px 20px 0">
+      <button onclick="shareCert()" style="width:100%;border:none;cursor:pointer;background:#0a0a0a;color:#fff;font:800 14px/1 Pretendard;padding:15px;border-radius:14px;display:flex;align-items:center;justify-content:center;gap:8px">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4"/></svg>
+        내 성지순례 공유하기
+      </button>
+      <div style="font:500 11px/1.5 Pretendard;color:rgba(10,10,10,.4);text-align:center;margin-top:10px">각 가게를 눌러 방문 사진을 올리면 인증돼요. 세 곳을 모두 채우면 완주!</div>
     </div>
     ${rest.length?`<div style="padding:24px 20px 0">
       <div class="dp" style="font:800 16px/1 Pretendard;letter-spacing:-.03em;color:#0a0a0a;margin-bottom:12px">그 외 후보</div>
@@ -554,6 +564,30 @@ function viewDetail(){
       </div>
     </div>`:""}
   </div>`;
+}
+
+/* ---- 성지순례 공유(스크린샷) ---- */
+function ensureH2C(){ return new Promise((res,rej)=>{ if(window.html2canvas) return res(); const s=document.createElement('script'); s.src='https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js'; s.onload=()=>res(); s.onerror=()=>rej(new Error('h2c load fail')); document.head.appendChild(s); }); }
+let sharing=false;
+async function shareCert(){
+  if(sharing) return; const el=document.getElementById('shareArea'); if(!el) return;
+  const L=state.lists[state.curListId]; const title=L?L.title:'성지순례';
+  sharing=true; toast('이미지 만드는 중…');
+  try{
+    await ensureH2C();
+    const canvas=await html2canvas(el,{backgroundColor:'#ffffff',scale:2,useCORS:true,logging:false});
+    const blob=await new Promise(r=>canvas.toBlob(r,'image/png',0.95));
+    if(!blob){ toast('이미지 생성 실패'); sharing=false; return; }
+    const file=new File([blob],'삼대집_'+title+'.png',{type:'image/png'});
+    const data={files:[file],title:'삼대집 성지순례',text:title+' 성지순례 인증! · 삼대집'};
+    if(navigator.canShare && navigator.canShare({files:[file]})){
+      try{ await navigator.share(data); }catch(e){}
+    }else{
+      const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=file.name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(a.href),5000);
+      toast('이미지를 저장했어요 — 공유해보세요');
+    }
+  }catch(e){ console.error(e); toast('공유 준비 중 오류가 났어요'); }
+  sharing=false;
 }
 
 /* ---- 완주 뱃지 ---- */
