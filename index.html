@@ -27,6 +27,13 @@
   @font-face{ font-family:'SlowGothic'; src:url('https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_2304-01@1.0/neurimboGothicRegular.woff2') format('woff2'); font-weight:normal; font-display:swap; }
   .dp{ font-family:'Pretendard',sans-serif !important; }
   @keyframes coinDrop{ 0%{opacity:0;transform:translateY(-74px) scale(1.7) rotate(-12deg);} 55%{opacity:1;transform:translateY(0) scale(.9) rotate(4deg);} 74%{transform:scale(1.06) rotate(-2deg);} 100%{transform:scale(1) rotate(0);} }
+  @keyframes coinEnter{ 0%{opacity:0;transform:translateY(-70px) scale(1.55);} 16%{opacity:1;} 100%{opacity:1;transform:translateY(0) scale(1);} }
+  @keyframes coinBob2{ 0%,100%{transform:translateY(0);} 50%{transform:translateY(-7px);} }
+  /* 가로 플립: scaleX 0 지점에서 앞/뒷면 교차 — 빠른 플립 여러 번 → 마지막에 뒷면 천천히 노출 → 앞면 안착 */
+  @keyframes coinFlipX{ 0%{transform:scaleX(1);}9%{transform:scaleX(.05);}13.5%{transform:scaleX(1);}18%{transform:scaleX(.05);}22.5%{transform:scaleX(1);}27%{transform:scaleX(.05);}32%{transform:scaleX(1);}37%{transform:scaleX(.05);}43%{transform:scaleX(1);}50%{transform:scaleX(.05);}61%{transform:scaleX(1);}73%{transform:scaleX(1);}81%{transform:scaleX(.05);}100%{transform:scaleX(1);} }
+  @keyframes opaFront{ 0%,8%{opacity:1;}10%,17%{opacity:0;}19%,26%{opacity:1;}28%,36%{opacity:0;}38%,49%{opacity:1;}51%,80%{opacity:0;}82%,100%{opacity:1;} }
+  @keyframes opaBack{ 0%,8%{opacity:0;}10%,17%{opacity:1;}19%,26%{opacity:0;}28%,36%{opacity:1;}38%,49%{opacity:0;}51%,80%{opacity:1;}82%,100%{opacity:0;} }
+  @keyframes sparkle{ 0%{opacity:0;transform:scale(.3) rotate(0deg);} 40%{opacity:1;} 100%{opacity:0;transform:scale(1.1) rotate(45deg);} }
   @keyframes shockR{ 0%{opacity:.5;transform:scale(.25);} 100%{opacity:0;transform:scale(2.6);} }
   @keyframes cardShake{ 0%,100%{transform:translate(0,0);} 25%{transform:translate(-5px,2px);} 50%{transform:translate(5px,-2px);} 75%{transform:translate(-3px,1px);} }
   @keyframes shineSweep{ 0%{transform:translateX(-170%) skewX(-18deg);opacity:0;} 25%{opacity:.95;} 70%{opacity:.95;} 100%{transform:translateX(230%) skewX(-18deg);opacity:0;} }
@@ -44,6 +51,7 @@
   #toast{ position:fixed; left:50%; bottom:96px; transform:translate(-50%,20px); opacity:0; transition:.28s;
     background:#0a0a0a; color:#fff; font:600 12.5px/1.4 inherit; padding:11px 18px; border-radius:99px; z-index:120; white-space:nowrap; pointer-events:none; max-width:90%; }
   #toast.show{ opacity:1; transform:translate(-50%,0); }
+  @keyframes certGlow{ 0%,100%{box-shadow:0 0 0 2px #f53d0c,0 0 13px 1px rgba(245,61,12,.45);} 50%{box-shadow:0 0 0 2px #f53d0c,0 0 22px 5px rgba(245,61,12,.8);} }
 </style>
 </head>
 <body>
@@ -76,7 +84,9 @@ const BADGES={
 function badgeFor(region,cat){ return BADGES[region+"|"+cat]||"assets/badge-back.webp"; }
 // 각 뱃지 코인이 캔버스를 채우는 비율 (측정값) — 이걸로 시각 크기 통일
 const COIN_RATIO={"badge-jeonguk-bbang":0.556,"badge-seoul-jokbal":0.55,"badge-seoul-sundae":0.681,"badge-seoul-naeng":0.575,"badge-seoul-tteok":0.65,"badge-daegu-tteok":0.681,"badge-daegu-chicken":0.669,"badge-jeju-gimbap":0.681,"badge-suwon-galbi":0.662,"badge-back":0.675};
-function badgeBg(region,cat,frac){ const src=badgeFor(region,cat); const key=src.replace("assets/","").replace(/\.(png|webp)$/,""); const r=COIN_RATIO[key]||0.62; const size=((frac||0.92)/r*100).toFixed(1); return `url('${src}') center/${size}% auto no-repeat`; }
+function badgeBgOf(src,frac){ const key=src.replace("assets/","").replace(/\.(png|webp)$/,""); const r=COIN_RATIO[key]||0.62; const size=((frac||0.92)/r*100).toFixed(1); return `url('${src}') center/${size}% auto no-repeat`; }
+function badgeBg(region,cat,frac){ return badgeBgOf(badgeFor(region,cat),frac); }
+const BADGE_BACK="assets/badge-back.webp";
 const db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 const LS={get:k=>{try{return localStorage.getItem(k);}catch(e){return null;}},set:(k,v)=>{try{localStorage.setItem(k,v);}catch(e){}},del:k=>{try{localStorage.removeItem(k);}catch(e){}}};
 
@@ -278,7 +288,7 @@ function render(){
 
 /* ---- 홈 ---- */
 function viewHome(){
-  const v=certCount(); const rgLists=state.region?listsInRegion(state.region):[];
+  const v=state.order.filter(id=>allCertified(id)).length; const rgLists=state.region?listsInRegion(state.region):[];
   const hotId=rgLists.find(id=>state.lists[id].cands.length>=4); const rk=hotId?candsRanked(hotId):[];
   const hot=rk.length>=4; const gap=hot?(rk[2].v-rk[3].v):0;
   return `
@@ -335,6 +345,15 @@ function tileCard(id){
       <div style="font:600 11px/1.4 Pretendard;color:rgba(255,255,255,.9);margin-top:3px">${L.cands.length}곳 후보 · ${listTotal(id).toLocaleString()}표</div></div></div>`;
 }
 
+/* ---- 포장마차 스타일 제목(검은 박스 + 느림보고딕, 왼쪽 정렬) ---- */
+function titleBoxes(title,fontSize,boxH,minW){
+  fontSize=fontSize||30; boxH=boxH||52; minW=minW||44;
+  const t=title||""; const i=t.indexOf("3대");
+  const parts=(i>=0?[t.slice(0,i+2),t.slice(i+2)]:[t]).filter(p=>p.trim());
+  const box=ch=>`<span style="display:inline-flex;align-items:center;justify-content:center;background:#0a0a0a;color:#fff;font-family:'SlowGothic',Pretendard,sans-serif;font-size:${fontSize}px;min-width:${minW}px;height:${boxH}px;padding:0 5px;border-radius:5px">${esc(ch)}</span>`;
+  return `<div style="display:flex;flex-direction:column;gap:5px;align-items:flex-start">${parts.map(p=>`<div style="display:flex;flex-wrap:wrap;gap:5px">${p.split("").filter(ch=>ch.trim()).map(box).join("")}</div>`).join("")}</div>`;
+}
+
 /* ---- 목록·투표 ---- */
 function viewList(){
   const L=state.lists[state.curListId]; if(!L) return viewSoon();
@@ -347,7 +366,7 @@ function viewList(){
       <div style="display:flex;align-items:center;margin-bottom:22px">
         <button onclick="go('home')" style="width:44px;height:44px;border-radius:99px;border:none;background:rgba(255,255,255,.2);color:#fff;font:700 19px/1 Pretendard;cursor:pointer">←</button>
       </div>
-      ${(()=>{const t=L.title;const i=t.indexOf("3대");const parts=(i>=0?[t.slice(0,i+2),t.slice(i+2)]:[t]).filter(p=>p.trim());const box=ch=>`<span style="display:inline-flex;align-items:center;justify-content:center;background:#0a0a0a;color:#fff;font-family:'SlowGothic',Pretendard,sans-serif;font-size:30px;min-width:44px;height:52px;padding:0 5px;border-radius:5px">${esc(ch)}</span>`;return `<div style="display:flex;flex-direction:column;gap:5px;margin-top:2px;align-items:flex-start">${parts.map(p=>`<div style="display:flex;flex-wrap:wrap;gap:5px">${p.split("").filter(ch=>ch.trim()).map(box).join("")}</div>`).join("")}</div>`;})()}
+      <div style="margin-top:2px">${titleBoxes(L.title)}</div>
       <div style="display:flex;align-items:flex-end;justify-content:flex-end;gap:12px;margin-top:16px">
         <div style="text-align:right;flex:none">
           <div style="font:800 22px/1 Pretendard;color:#fff">${total.toLocaleString()}</div>
@@ -437,31 +456,49 @@ function candCard(listId,c,rank){
 function viewCert(){
   const doneCount=state.order.filter(id=>allCertified(id)).length;
   const regs=["전체",...state.regions]; const cr=state.certRegion||"전체";
-  let ids=state.order.filter(id=> cr==="전체" || state.lists[id].region===cr)
-    .map(id=>{const t=top3(id);const n=t.filter(s=>isCertified(s.id)).length;return {id,n,complete:allCertified(id)};})
-    .sort((a,b)=> (b.complete-a.complete) || (b.n-a.n));
+  const info=id=>{const t=top3(id);const n=t.filter(s=>isCertified(s.id)).length;return {id,n,complete:allCertified(id)};};
+  const sortItems=a=>a.sort((x,y)=>(y.complete-x.complete)||(y.n-x.n));
+  const card=({id,n,complete})=>{ const L=state.lists[id];
+    return `<div onclick="openDetail('${id}')" style="cursor:pointer;background:${complete?"linear-gradient(160deg,#fff,#ffeee7)":"#fff"};border-radius:20px;padding:16px;${complete?"box-shadow:0 0 0 2px #f53d0c":""}">
+        <div style="display:flex;align-items:center;gap:14px">
+          <div style="flex:none;width:52px;height:52px;border-radius:99px;background:${complete?badgeBg(L.region,L.category,1.02):"rgba(10,10,10,.06)"}"></div>
+          <div style="flex:1;min-width:0">
+            <div style="font:800 16px/1.2 Pretendard;letter-spacing:-.03em;color:#0a0a0a">${esc(L.title)}</div>
+            <div style="font:500 11.5px/1.4 Pretendard;color:rgba(10,10,10,.5);margin-top:4px">${complete?"완주 · 인증 뱃지 획득":n+"/3 인증"}</div></div>
+          <div style="flex:none;font:800 14px/1 Pretendard;color:${complete?"#f53d0c":"rgba(10,10,10,.35)"}">${n}/3</div>
+          <div style="flex:none;font:700 18px/1 Pretendard;color:rgba(10,10,10,.3)">›</div>
+        </div></div>`; };
+  const regDivider=(rg,items)=>`<div style="display:flex;align-items:center;gap:10px;margin:22px 0 11px">
+      <div class="dp" style="font:800 15px/1 Pretendard;letter-spacing:-.02em;color:#0a0a0a">${esc(rg)}</div>
+      <div style="flex:1;height:1px;background:rgba(10,10,10,.13)"></div>
+      <div style="font:600 11px/1 Pretendard;color:rgba(10,10,10,.4)">${items.filter(x=>x.complete).length}/${items.length} 완주</div>
+    </div>`;
+  let listHtml;
+  if(cr==="전체"){
+    listHtml=state.regions.map(rg=>{ const items=sortItems(state.order.filter(id=>state.lists[id].region===rg).map(info));
+      if(!items.length) return "";
+      return regDivider(rg,items)+`<div style="display:flex;flex-direction:column;gap:8px">${items.map(card).join("")}</div>`;
+    }).join("");
+  }else{
+    const items=sortItems(state.order.filter(id=>state.lists[id].region===cr).map(info));
+    listHtml=`<div style="display:flex;flex-direction:column;gap:8px">${items.map(card).join("")}</div>`;
+  }
   return `
   <div style="${ea('b3in','.3s')};padding:16px 20px 104px">
-    <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:16px">
-      <div><div class="dp" style="font:800 46px/.92 Pretendard;letter-spacing:-.045em;color:#0a0a0a">${doneCount}</div>
-        <div style="font:500 12.5px/1.4 Pretendard;color:rgba(10,10,10,.45);margin-top:8px">성지순례 완주</div></div>
-      <img src="logo.png" alt="삼대집" width="38" height="38" loading="lazy" decoding="async" style="width:38px;height:38px;border-radius:9px;display:block">
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:8px 0 16px">
+      <div style="min-width:0">
+        <div style="display:flex;align-items:center;gap:10px"><img src="logo.png" alt="" width="30" height="30" decoding="async" style="width:30px;height:30px;border-radius:7px;display:block"><div style="width:98px;height:23px;background:url('assets/wordmark.webp') left center/98px auto no-repeat" role="img" aria-label="삼대집"></div></div>
+        <div style="font:600 12.5px/1.45 Pretendard;color:rgba(10,10,10,.5);margin-top:11px;max-width:220px">사진으로 인증하는 나만의 성지순례</div>
+      </div>
+      <div style="flex:none;display:flex;flex-direction:column;align-items:center;gap:6px">
+        <div style="font:700 10px/1 Pretendard;letter-spacing:.06em;color:rgba(10,10,10,.45)">완주</div>
+        <div style="width:46px;height:46px;border-radius:99px;background:rgba(10,10,10,.07);color:#0a0a0a;font:800 15px/1 Pretendard;display:flex;align-items:center;justify-content:center">${doneCount}</div>
+      </div>
     </div>
-    <div style="display:flex;gap:6px;overflow-x:auto;padding-bottom:14px">
+    <div style="display:flex;gap:6px;overflow-x:auto;padding-bottom:6px">
       ${regs.map(r=>{const on=r===cr;return `<button onclick="pickCertRegion('${r}')" style="flex:none;border:none;cursor:pointer;border-radius:99px;padding:8px 15px;font:700 12.5px/1 Pretendard;${on?"background:#0a0a0a;color:#fff":"background:rgba(10,10,10,.06);color:rgba(10,10,10,.55)"}">${esc(r)}</button>`;}).join("")}
     </div>
-    <div style="display:flex;flex-direction:column;gap:8px">
-      ${ids.map(({id,n,complete})=>{ const L=state.lists[id];
-        return `<div onclick="openDetail('${id}')" style="cursor:pointer;background:${complete?"linear-gradient(160deg,#fff,#ffeee7)":"#fff"};border-radius:20px;padding:16px;${complete?"box-shadow:0 0 0 2px #f53d0c":""}">
-          <div style="display:flex;align-items:center;gap:14px">
-            <div style="flex:none;width:52px;height:52px;border-radius:99px;background:${complete?badgeBg(L.region,L.category,1.02):"rgba(10,10,10,.06)"}"></div>
-            <div style="flex:1;min-width:0">
-              <div style="font:800 16px/1.2 Pretendard;letter-spacing:-.03em;color:#0a0a0a">${esc(L.title)}</div>
-              <div style="font:500 11.5px/1.4 Pretendard;color:rgba(10,10,10,.5);margin-top:4px">${complete?"완주 · 인증 뱃지 획득":n+"/3 인증"}</div></div>
-            <div style="flex:none;font:800 14px/1 Pretendard;color:${complete?"#f53d0c":"rgba(10,10,10,.35)"}">${n}/3</div>
-            <div style="flex:none;font:700 18px/1 Pretendard;color:rgba(10,10,10,.3)">›</div>
-          </div></div>`; }).join("")}
-    </div>
+    ${listHtml}
     <div style="margin-top:18px;border:1px dashed rgba(10,10,10,.2);border-radius:20px;padding:18px;font:500 12.5px/1.7 Pretendard;color:rgba(10,10,10,.5)">목록을 눌러 성지순례 삼각형을 열고, 사진을 올려 인증하세요. 세 곳을 모두 채우면 완주 뱃지가 등장합니다.</div>
   </div>`;
 }
@@ -470,42 +507,48 @@ function viewCert(){
 function viewDetail(){
   const L=state.lists[state.curListId]; if(!L) return viewSoon();
   const t3=top3(L.id); const p=photos(); const n=t3.filter(s=>isCertified(s.id)).length; const complete=allCertified(L.id);
-  const pos=[{l:50,t:22},{l:23,t:80},{l:77,t:80}];
-  const nodes=t3.map((s,i)=>{ const cert=isCertified(s.id); const ph=p[s.id]; const labelPos=i===0?"bottom:84px":"top:84px";
-    return `<div style="position:absolute;left:${pos[i].l}%;top:${pos[i].t}%;transform:translate(-50%,-50%);width:78px;height:78px">
-      <button onclick="openCert('${s.id}')" style="width:78px;height:78px;border-radius:99px;cursor:pointer;border:${cert?"3px solid #f53d0c":"2px dashed rgba(10,10,10,.28)"};background:${cert?`#eee url('${ph.photo}') center/cover`:"rgba(10,10,10,.04)"};display:flex;align-items:center;justify-content:center;color:${cert?"#fff":"rgba(10,10,10,.4)"};overflow:hidden;box-shadow:${cert?"0 4px 14px rgba(245,61,12,.25)":"none"}">${cert?"":'<span style="font:800 24px/1 Pretendard">＋</span>'}</button>
-      <div style="position:absolute;${labelPos};left:50%;transform:translateX(-50%);white-space:nowrap;font:700 12.5px/1.2 Pretendard;letter-spacing:-.02em;color:#0a0a0a">${esc(s.name)}</div>
+  const rest=candsRanked(L.id).slice(3);
+  const MEDALS=["gold","silver","bronze"];
+  const lockIco=`<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="rgba(10,10,10,.4)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>`;
+  const cards=t3.map((s,i)=>{ const cert=isCertified(s.id); const ph=p[s.id];
+    return `<div>
+      <div style="display:flex;align-items:center;gap:7px;margin:0 2px 7px">
+        <div style="flex:none;width:18px;height:18px;background:url('assets/medal/${MEDALS[i]||'bronze'}.webp') center/175% auto no-repeat" role="img" aria-label="${i+1}위"></div>
+        <div style="font:800 14.5px/1.2 Pretendard;letter-spacing:-.02em;color:#0a0a0a">${esc(s.name)}</div>
+      </div>
+      <button onclick="openCert('${s.id}')" style="width:100%;aspect-ratio:16/9;border:none;cursor:pointer;border-radius:16px;overflow:hidden;position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;background:${cert?`#eee url('${esc(ph.photo)}') center/cover`:"rgba(10,10,10,.07)"};${cert?"animation:certGlow 1.9s ease-in-out infinite":"border:1px dashed rgba(10,10,10,.22)"}">
+        ${cert
+          ?`<span style="position:absolute;left:11px;bottom:11px;background:rgba(10,10,10,.72);color:#fff;font:700 11px/1 Pretendard;padding:6px 11px;border-radius:99px">✓ ${esc(ph.date)}</span>`
+          :`${lockIco}<span style="font:700 12.5px/1 Pretendard;color:rgba(10,10,10,.45)">눌러서 인증하기</span>`}
+      </button>
     </div>`; }).join("");
   return `
   <div style="${ea('b3slide','.3s')};padding-bottom:104px">
-    <div style="background:#f53d0c;padding:14px 20px 20px;display:flex;align-items:center;justify-content:space-between;gap:12px">
-      <button onclick="go('cert')" style="width:44px;height:44px;border-radius:99px;border:none;background:rgba(255,255,255,.2);color:#fff;font:700 19px/1 Pretendard;cursor:pointer">←</button>
-      <div style="flex:1;font:700 12px/1 Pretendard;letter-spacing:.2em;color:rgba(255,255,255,.85);text-align:center">삼대집 · 성지순례</div>
-      <div style="width:44px"></div>
-    </div>
-    <div style="padding:24px 20px 0;text-align:center">
-      <div class="dp" style="font:800 30px/1.1 Pretendard;letter-spacing:-.04em;color:#0a0a0a">${esc(L.title)}</div>
-      <div style="font:500 12px/1.5 Pretendard;color:rgba(10,10,10,.45);margin-top:9px">3곳 중 ${n}곳 인증 · 세 곳을 모두 채우면 완주</div>
-    </div>
-    <div style="position:relative;width:100%;max-width:330px;height:344px;margin:16px auto 0">
-      <svg viewBox="0 0 100 100" preserveAspectRatio="none" style="position:absolute;inset:0;width:100%;height:100%">
-        <polygon points="50,22 23,80 77,80" fill="none" stroke="${complete?'#f53d0c':'rgba(10,10,10,.15)'}" stroke-width="1.2" stroke-dasharray="${complete?'0':'3 3'}"/>
-      </svg>
-      <div style="position:absolute;left:50%;top:51%;transform:translate(-50%,-50%);width:76px;height:76px;border-radius:99px;background:${badgeBg(L.region,L.category,1.0)};${complete?"box-shadow:0 0 0 4px rgba(245,61,12,.25);":"filter:grayscale(1);opacity:.4;"}"></div>
-      ${nodes}
-    </div>
-    <div style="padding:6px 20px 0">
-      <div style="text-align:center;font:600 11.5px/1.6 Pretendard;color:rgba(10,10,10,.45);margin-bottom:14px">각 꼭짓점을 눌러 그 집 사진을 올리면 인증돼요.</div>
-      <div style="display:flex;flex-direction:column;gap:8px">
-        ${t3.map(s=>{const cert=isCertified(s.id);const ph=p[s.id];
-          return `<div style="display:flex;align-items:center;gap:12px;background:#fff;border-radius:18px;padding:13px 15px">
-            <div style="flex:none;width:26px;height:26px;border-radius:99px;display:flex;align-items:center;justify-content:center;font:800 12px/1 Pretendard;${cert?"background:#0a0a0a;color:#fff":"background:rgba(10,10,10,.06);color:rgba(10,10,10,.3)"}">${cert?"✓":""}</div>
-            <div style="flex:1;min-width:0"><div style="font:700 14px/1.3 Pretendard;letter-spacing:-.02em;color:#0a0a0a">${esc(s.name)}</div>
-              <div style="font:500 11px/1.4 Pretendard;color:rgba(10,10,10,.45);margin-top:3px">${esc(s.district)}${s.signature?" · "+esc(s.signature):""}</div></div>
-            <button onclick="openCert('${s.id}')" style="flex:none;border:none;cursor:pointer;font:700 11px/1 Pretendard;padding:9px 13px;border-radius:99px;${cert?"background:rgba(10,10,10,.06);color:#0a0a0a":"background:#f53d0c;color:#fff"}">${cert?esc(ph.date):"인증"}</button>
-          </div>`;}).join("")}
+    <div style="background:#f53d0c;padding:14px 20px 24px;position:relative;overflow:hidden">
+      <div style="position:absolute;right:14px;top:52%;transform:translateY(-50%);width:108px;height:108px;background:${badgeBg(L.region,L.category,0.92)};pointer-events:none;${complete?"filter:drop-shadow(0 6px 16px rgba(0,0,0,.3))":"filter:grayscale(.65);opacity:.3"}"></div>
+      <div style="position:relative;z-index:1">
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:18px">
+          <button onclick="go('cert')" style="width:44px;height:44px;border-radius:99px;border:none;background:rgba(255,255,255,.2);color:#fff;font:700 19px/1 Pretendard;cursor:pointer">←</button>
+        </div>
+        ${titleBoxes(L.title)}
+        <div style="font:500 12px/1.5 Pretendard;color:rgba(255,255,255,.85);margin-top:14px">${complete?"완주 · 인증 뱃지 획득 🎉":"3곳 중 "+n+"곳 인증 · 세 곳을 모두 채우면 완주"}</div>
       </div>
     </div>
+    <div style="padding:20px 20px 0">
+      <div style="font:600 11.5px/1.6 Pretendard;color:rgba(10,10,10,.45);margin-bottom:14px">각 가게 박스를 눌러 방문을 인증하세요. 세 곳을 모두 채우면 완주 뱃지가 등장합니다.</div>
+      <div style="display:flex;flex-direction:column;gap:16px">${cards}</div>
+    </div>
+    ${rest.length?`<div style="padding:24px 20px 0">
+      <div class="dp" style="font:800 16px/1 Pretendard;letter-spacing:-.03em;color:#0a0a0a;margin-bottom:12px">그 외 후보</div>
+      <div style="display:flex;flex-direction:column;gap:7px">
+        ${rest.map((c,i)=>`<div style="display:flex;align-items:center;gap:11px;background:#fff;border-radius:14px;padding:11px 13px;border:1px solid rgba(10,10,10,.09)">
+            <div style="flex:none;font:800 15px/1 Pretendard;color:rgba(10,10,10,.32);width:22px;text-align:center">${i+4}</div>
+            <div style="flex:1;min-width:0"><div style="font:700 14px/1.25 Pretendard;letter-spacing:-.02em;color:#0a0a0a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(c.name)}</div>
+              <div style="font:500 10.5px/1.3 Pretendard;color:rgba(10,10,10,.42);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(c.district)}</div></div>
+            <div style="flex:none;font:700 11.5px/1 Pretendard;color:rgba(10,10,10,.5)">${c.v}표</div>
+          </div>`).join("")}
+      </div>
+    </div>`:""}
   </div>`;
 }
 
@@ -516,11 +559,15 @@ function stampOverlay(){
     <div style="background:linear-gradient(160deg,#ff5a2e,#f53d0c);border-radius:28px;padding:40px 26px 26px;text-align:center;width:100%;animation:cardShake .42s ease .34s both">
       <div style="position:relative;width:180px;height:180px;margin:0 auto">
         <div style="position:absolute;inset:0;border-radius:99px;border:3px solid rgba(255,255,255,.8);animation:shockR .7s ease .34s both"></div>
-        <div style="position:absolute;inset:0;border-radius:99px;border:2px solid rgba(255,255,255,.5);animation:shockR .85s ease .44s both"></div>
-        <div style="position:absolute;inset:0;background:${badgeBg(L?L.region:'',L?L.category:'',0.92)};filter:drop-shadow(0 10px 20px rgba(0,0,0,.35));animation:coinDrop .6s cubic-bezier(.2,.8,.3,1) both"></div>
-        <div style="position:absolute;inset:0;border-radius:99px;overflow:hidden;pointer-events:none">
-          <div style="position:absolute;top:-30%;left:0;width:42%;height:160%;background:linear-gradient(90deg,transparent,rgba(255,255,255,.9),transparent);animation:shineSweep 1s ease .72s both"></div>
+        <div style="position:absolute;inset:0;border-radius:99px;border:2px solid rgba(255,255,255,.5);animation:shockR .95s ease .5s both"></div>
+        <div style="position:absolute;left:14%;right:14%;bottom:2%;height:22px;border-radius:99px;background:rgba(0,0,0,.34);filter:blur(11px);animation:coinEnter .6s ease both"></div>
+        <div style="position:absolute;inset:0;filter:drop-shadow(0 10px 20px rgba(0,0,0,.35));animation:coinEnter 2.1s cubic-bezier(.12,.62,.24,1) both,coinBob2 2.6s ease-in-out 2.15s infinite">
+          <div style="position:absolute;inset:0;animation:coinFlipX 2.1s linear both">
+            <div style="position:absolute;inset:0;background:${badgeBg(L?L.region:'',L?L.category:'',0.92)};animation:opaFront 2.1s linear both"></div>
+            <div style="position:absolute;inset:0;background:${badgeBgOf(BADGE_BACK,0.92)};animation:opaBack 2.1s linear both"></div>
+          </div>
         </div>
+        ${[["6%","6%",16],["10%","85%",12],["80%","3%",13],["84%","87%",18]].map((s,i)=>`<div style="position:absolute;top:${s[0]};left:${s[1]};font:900 ${s[2]}px/1 Pretendard;color:#fff;text-shadow:0 0 9px rgba(255,255,255,.9);animation:sparkle 1.1s ease ${(2.0+i*0.2).toFixed(2)}s infinite;pointer-events:none">✦</div>`).join("")}
       </div>
       <div class="dp" style="font:800 27px/1.1 Pretendard;letter-spacing:-.04em;color:#0a0a0a;margin-top:18px;animation:txtUp .4s ease .62s both">${esc(title)} 완주</div>
       <div style="font:600 12.5px/1.6 Pretendard;color:rgba(255,255,255,.95);margin-top:8px;animation:txtUp .4s ease .74s both">3대 맛집 전부 방문 인증 완료</div>
