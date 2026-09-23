@@ -61,7 +61,7 @@
 </div>
 <div id="app"><div style="padding:60px 0;text-align:center;color:rgba(10,10,10,.4);font-size:14px"></div></div>
 <div id="toast"></div>
-<input type="file" id="picker" accept="image/*" capture="environment" hidden />
+<input type="file" id="picker" accept="image/*" hidden />
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
@@ -283,7 +283,7 @@ function commentsHtml(spotId){
   }).join("");
 }
 function openList(listId){ state.curListId=listId; go("list"); }
-function openDetail(listId){ state.curListId=listId; go("detail"); }
+function openDetail(listId){ state.curListId=listId; go("detail"); try{ ensureH2C().catch(()=>{}); }catch(e){} }
 
 /* ===== 렌더 ===== */
 const esc=s=>(s==null?"":String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"));
@@ -583,25 +583,31 @@ function viewDetail(){
 
 /* ---- 성지순례 공유(스크린샷) ---- */
 function ensureH2C(){ return new Promise((res,rej)=>{ if(window.html2canvas) return res(); const s=document.createElement('script'); s.src='https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js'; s.onload=()=>res(); s.onerror=()=>rej(new Error('h2c load fail')); document.head.appendChild(s); }); }
+function saveBlob(blob,name){ try{ const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(a.href),5000); }catch(e){ console.error(e); } }
 let sharing=false;
 async function shareCert(){
   if(sharing) return; const el=document.getElementById('shareArea'); if(!el) return;
   const L=state.lists[state.curListId]; const title=L?L.title:'성지순례';
   sharing=true; toast('이미지 만드는 중…');
+  let blob;
   try{
     await ensureH2C();
     const canvas=await html2canvas(el,{backgroundColor:'#ffffff',scale:2,useCORS:true,logging:false});
-    const blob=await new Promise(r=>canvas.toBlob(r,'image/png',0.95));
-    if(!blob){ toast('이미지 생성 실패'); sharing=false; return; }
-    const file=new File([blob],'삼대집_'+title+'.png',{type:'image/png'});
-    const data={files:[file],title:'삼대집 성지순례',text:title+' 성지순례 인증! · 삼대집'};
+    blob=await new Promise(r=>canvas.toBlob(r,'image/png',0.95));
+  }catch(e){ console.error(e); toast('이미지 생성에 실패했어요'); sharing=false; return; }
+  if(!blob){ toast('이미지 생성에 실패했어요'); sharing=false; return; }
+  const file=new File([blob],'삼대집_'+title+'.png',{type:'image/png'});
+  const data={files:[file],title:'삼대집 성지순례',text:title+' 성지순례 인증! · 삼대집'};
+  try{
     if(navigator.canShare && navigator.canShare({files:[file]})){
-      try{ await navigator.share(data); }catch(e){}
+      await navigator.share(data);                       // 성공 시 네이티브 공유 시트
     }else{
-      const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=file.name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(a.href),5000);
-      toast('이미지를 저장했어요 — 공유해보세요');
+      saveBlob(blob,file.name); toast('이미지를 저장했어요 — 공유해보세요');
     }
-  }catch(e){ console.error(e); toast('공유 준비 중 오류가 났어요'); }
+  }catch(e){
+    if(e && e.name==='AbortError'){ /* 사용자가 공유를 취소함 — 무시 */ }
+    else{ console.warn('share failed → 저장으로 대체', e); saveBlob(blob,file.name); toast('공유가 안 돼서 이미지를 저장했어요'); }
+  }
   sharing=false;
 }
 
