@@ -639,7 +639,38 @@ function stampOverlay(){
 function closeStamp(){ state.stamp=false; render(); }
 
 /* ---- 마이 (로그인/로그아웃) ---- */
-async function loginKakao(){ try{ await db.auth.signInWithOAuth({provider:"kakao",options:{redirectTo:location.origin,scopes:"profile_nickname"}}); }catch(e){ toast("로그인 시작 실패"); console.error(e); } }
+const APP_AUTH_REDIRECT="com.samdaejip.app://login-callback"; // 앱 딥링크(= Supabase Redirect URLs에 등록 필요)
+async function loginKakao(){
+  try{
+    if(isNativeApp()){
+      // 네이티브: 시스템 브라우저로 카카오 로그인 → 딥링크로 앱 복귀(appUrlOpen에서 세션 처리)
+      const { data, error } = await db.auth.signInWithOAuth({ provider:"kakao", options:{ redirectTo:APP_AUTH_REDIRECT, skipBrowserRedirect:true, scopes:"profile_nickname" } });
+      if(error) throw error;
+      await window.Capacitor.Plugins.Browser.open({ url:data.url });
+    }else{
+      // 웹: 기존 방식 그대로(전체 페이지 리다이렉트)
+      await db.auth.signInWithOAuth({ provider:"kakao", options:{ redirectTo:location.origin, scopes:"profile_nickname" } });
+    }
+  }catch(e){ toast("로그인 시작 실패"); console.error(e); }
+}
+// 앱 딥링크 복귀 처리: 로그인 콜백 URL에서 세션 수립 (PKCE code / implicit 토큰 모두 대응)
+function setupDeepLinks(){
+  if(!isNativeApp()) return;
+  const App = window.Capacitor.Plugins.App, Browser = window.Capacitor.Plugins.Browser;
+  if(!App) return;
+  App.addListener("appUrlOpen", async ({url})=>{
+    if(!url || url.indexOf("login-callback")<0) return;
+    try{
+      const q = url.split("?")[1]||"", h = url.split("#")[1]||"";
+      const code = new URLSearchParams(q).get("code");
+      if(code){ await db.auth.exchangeCodeForSession(code); }          // PKCE 플로우
+      else { const p=new URLSearchParams(h); const at=p.get("access_token"), rt=p.get("refresh_token");
+        if(at&&rt) await db.auth.setSession({access_token:at, refresh_token:rt}); } // implicit 플로우
+      // onAuthStateChange가 세션 반영·재렌더 담당
+    }catch(e){ console.error(e); toast("로그인 처리 실패"); }
+    try{ if(Browser) await Browser.close(); }catch(e){}
+  });
+}
 function naverSoon(){ toast("네이버 로그인은 준비 중이에요"); }
 function loginGuest(){ guest=true; LS.set("sdj_guest","1"); render(); }
 function loginMock(p){ return p==="kakao"?loginKakao():p==="naver"?naverSoon():loginGuest(); }
@@ -723,6 +754,7 @@ async function initAds(){
 
 load();
 initAds();
+setupDeepLinks();
 </script>
 </body>
 </html>
