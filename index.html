@@ -52,6 +52,9 @@
     background:#0a0a0a; color:#fff; font:600 12.5px/1.4 inherit; padding:11px 18px; border-radius:99px; z-index:120; white-space:nowrap; pointer-events:none; max-width:90%; }
   #toast.show{ opacity:1; transform:translate(-50%,0); }
   @keyframes certGlow{ 0%,100%{box-shadow:0 0 0 2px #f53d0c,0 0 13px 1px rgba(245,61,12,.45);} 50%{box-shadow:0 0 0 2px #f53d0c,0 0 22px 5px rgba(245,61,12,.8);} }
+  /* 네이티브 앱에서 AdMob 배너(≈50px) 공간 확보: 하단 네비를 올리고 콘텐츠 하단 여백 추가 */
+  body.native-ads nav{ bottom:54px !important; }
+  body.native-ads #app{ padding-bottom:54px; }
 </style>
 </head>
 <body>
@@ -701,7 +704,25 @@ function navBar(){
 }
 let toastT; function toast(m){ const t=document.getElementById("toast"); t.textContent=m; t.classList.add("show"); clearTimeout(toastT); toastT=setTimeout(()=>t.classList.remove("show"),2200); }
 
+/* ===== AdMob 배너 (네이티브 앱에서만 동작 · 웹은 완전 no-op) =====
+   테스트 중엔 구글 공식 테스트 ID 사용. 실제 출시 시 AD_BANNER_ID와
+   AndroidManifest의 App ID를 실제 값으로 교체. */
+const AD_BANNER_ID="ca-app-pub-3940256099942544/6300978111"; // 구글 테스트 배너(Android)
+const AD_TESTING=true; // 실제 광고 전환 시 false
+function isNativeApp(){ try{ return !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform()); }catch(e){ return false; } }
+async function initAds(){
+  if(!isNativeApp()) return;                         // 웹(Vercel)·미리보기에선 아무 것도 안 함
+  const AdMob = window.Capacitor.Plugins && window.Capacitor.Plugins.AdMob;
+  if(!AdMob){ console.warn("AdMob 플러그인 없음"); return; }
+  try{
+    document.body.classList.add("native-ads");        // 하단 네비를 배너 높이만큼 올림
+    await AdMob.initialize({ initializeForTesting:AD_TESTING });
+    await AdMob.showBanner({ adId:AD_BANNER_ID, adSize:"BANNER", position:"BOTTOM_CENTER", margin:54, isTesting:AD_TESTING });
+  }catch(e){ console.warn("AdMob 배너 실패", e); document.body.classList.remove("native-ads"); }
+}
+
 load();
+initAds();
 </script>
 </body>
 </html>
